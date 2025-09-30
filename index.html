@@ -1,0 +1,1175 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>POS & Bookkeeping</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Chart.js CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+    <!-- Font Inter -->
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap');
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f7f9fb; /* Light background for the overall app */
+        }
+        .view-container {
+            min-height: calc(100vh - 80px); /* Account for header/nav height */
+        }
+        .tab-button.active {
+            border-bottom: 3px solid #4f46e5;
+            color: #4f46e5;
+        }
+    </style>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        'primary': '#4f46e5',
+                        'secondary': '#10b981',
+                        'danger': '#ef4444',
+                        'card-bg': '#ffffff',
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="text-gray-800">
+
+    <!-- Global Message Box (for alerts) -->
+    <div id="message-box" class="fixed top-4 right-4 z-50 transition-all duration-300 opacity-0 transform translate-y-[-20px]">
+        <!-- Message content will be inserted here -->
+    </div>
+
+    <!-- Navigation Header -->
+    <header class="bg-primary shadow-lg sticky top-0 z-10">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex items-center justify-between h-16">
+                <div class="flex items-center">
+                    <span class="text-xl font-bold text-white tracking-wider">BookKeep</span>
+                </div>
+                <nav class="flex space-x-2 sm:space-x-4">
+                    <button class="nav-button p-2 rounded-lg text-white font-medium bg-primary hover:bg-indigo-600 transition duration-150" data-view="sales">Cash Register</button>
+                    <button class="nav-button p-2 rounded-lg text-white font-medium bg-primary hover:bg-indigo-600 transition duration-150" data-view="inventory">Inventory</button>
+                    <button class="nav-button p-2 rounded-lg text-white font-medium bg-primary hover:bg-indigo-600 transition duration-150" data-view="expenses">Expenses</button>
+                    <button class="nav-button p-2 rounded-lg text-white font-medium bg-primary hover:bg-indigo-600 transition duration-150" data-view="stats">P&L Reports</button>
+                </nav>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="max-w-7xl mx-auto p-4 sm:p-6 lg:p-8 view-container">
+
+        <!-- 1. Cash Register / Sales View -->
+        <div id="sales-view" class="active-view grid grid-cols-1 lg:grid-cols-3 gap-6">
+
+            <!-- Item List / Product Search (LHS) -->
+            <div class="lg:col-span-2 bg-card-bg p-6 rounded-xl shadow-lg">
+                <h2 class="text-2xl font-bold mb-4 text-primary">Products</h2>
+                <input type="text" id="product-search" placeholder="Search products by name..." class="w-full p-3 border border-gray-300 rounded-lg mb-4 focus:ring-2 focus:ring-primary">
+
+                <div id="product-list" class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 max-h-[70vh] overflow-y-auto pr-2">
+                    <!-- Inventory items will be rendered here -->
+                </div>
+            </div>
+
+            <!-- Transaction Panel / Cart (RHS) -->
+            <div class="lg:col-span-1 bg-card-bg p-6 rounded-xl shadow-lg border-2 border-secondary">
+                <h2 class="text-2xl font-bold mb-4 text-secondary">Current Transaction</h2>
+
+                <div id="cart-items" class="h-64 overflow-y-auto mb-4 border-b pb-2">
+                    <!-- Cart items will be rendered here -->
+                </div>
+
+                <div class="space-y-3 font-semibold text-lg border-t pt-4">
+                    <div class="flex justify-between">
+                        <span>Subtotal:</span>
+                        <span id="cart-subtotal">0.00</span>
+                    </div>
+                    <div class="flex justify-between text-2xl font-extrabold text-primary">
+                        <span>TOTAL:</span>
+                        <span id="cart-total">0.00</span>
+                    </div>
+                </div>
+
+                <div class="mt-6 space-y-4">
+                    <select id="payment-method" class="w-full p-3 border border-gray-300 rounded-lg">
+                        <option value="Cash">Cash</option>
+                        <option value="Card">Card</option>
+                        <option value="Other">Other</option>
+                    </select>
+
+                    <button id="complete-sale-btn" class="w-full p-4 bg-secondary text-white font-bold rounded-lg shadow-md hover:bg-emerald-600 transition duration-150 disabled:opacity-50" disabled>
+                        Complete Sale
+                    </button>
+                    <button id="clear-transaction-btn" class="w-full p-3 bg-danger text-white font-semibold rounded-lg hover:bg-red-600 transition duration-150">
+                        Clear Transaction
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- 2. Inventory Management View -->
+        <!-- FIX APPLIED: Added flex flex-col gap-6 -->
+        <div id="inventory-view" class="hidden flex flex-col gap-6">
+            <h1 class="text-3xl font-extrabold mb-6 text-primary">Inventory Management</h1>
+
+            <!-- Add/Edit Inventory Item Form -->
+            <div class="bg-card-bg p-6 rounded-xl shadow-lg mb-8">
+                <h2 class="text-2xl font-semibold mb-4 text-primary" id="inventory-form-title">Add New Item</h2>
+                <form id="inventory-form" class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <input type="hidden" id="item-id">
+                    <input type="text" id="item-name" placeholder="Item Name" required class="p-3 border rounded-lg focus:ring-primary focus:border-primary">
+                    <!-- REMOVED: item-cost input field -->
+                    <input type="number" id="item-price" placeholder="Selling Price (e.g., 9.99)" step="0.01" required class="p-3 border rounded-lg focus:ring-primary focus:border-primary">
+                    <input type="number" id="item-stock" placeholder="Initial/Current Stock" required class="p-3 border rounded-lg focus:ring-primary focus:border-primary">
+                    <input type="text" id="item-unit" placeholder="Unit (e.g., ea, kg, box)" required class="p-3 border rounded-lg focus:ring-primary focus:border-primary">
+
+                    <button type="submit" id="inventory-submit-btn" class="p-3 bg-secondary text-white font-semibold rounded-lg hover:bg-emerald-600 transition duration-150 md:col-span-3">
+                        Add Item
+                    </button>
+                    <button type="button" id="inventory-cancel-btn" class="p-3 bg-gray-500 text-white font-semibold rounded-lg hover:bg-gray-600 transition duration-150 hidden md:col-span-3">
+                        Cancel Edit
+                    </button>
+                </form>
+            </div>
+
+            <!-- Inventory Table -->
+            <div class="bg-card-bg p-6 rounded-xl shadow-lg overflow-x-auto">
+                <h2 class="text-2xl font-semibold mb-4 text-primary">Current Stock</h2>
+                <table class="min-w-full divide-y divide-gray-200">
+                    <thead class="bg-gray-50">
+                        <tr>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Name</th>
+                            <!-- REMOVED: Cost Price header -->
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Selling Price</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Stock</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="inventory-table-body" class="bg-white divide-y divide-gray-200">
+                        <!-- Inventory items will be rendered here -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- 3. Expense Tracking View (NEW) -->
+        <!-- FIX APPLIED: Added flex flex-col gap-6 -->
+        <div id="expenses-view" class="hidden flex flex-col gap-6">
+            <h1 class="text-3xl font-extrabold mb-6 text-danger">Expense Tracker</h1>
+
+            <!-- Add Expense Form -->
+            <div class="bg-card-bg p-6 rounded-xl shadow-lg mb-8 border-t-4 border-danger">
+                <h2 class="text-2xl font-semibold mb-4 text-danger">Log New Expense</h2>
+                <form id="expense-form" class="grid grid-cols-1 md:grid-cols-4 gap-4">
+                    <input type="hidden" id="expense-id">
+                    <input type="text" id="expense-description" placeholder="Description (e.g., Propane refill, Permit fee)" required class="p-3 border rounded-lg focus:ring-danger focus:border-danger md:col-span-2">
+                    <select id="expense-category" required class="p-3 border rounded-lg focus:ring-danger focus:border-danger">
+                        <option value="" disabled selected>Select Category</option>
+                        <option value="Ingredients">Ingredients/Supplies</option>
+                        <option value="Fuel">Fuel/Gas/Propane</option>
+                        <option value="Rent">Rent/Permits/Fees</option>
+                        <option value="Utilities">Utilities/Maintenance</option>
+                        <option value="Wages">Wages/Payroll</option>
+                        <option value="Other">Other</option>
+                    </select>
+                    <input type="number" id="expense-amount" placeholder="Amount" step="0.01" required class="p-3 border rounded-lg focus:ring-danger focus:border-danger">
+                    <button type="submit" class="p-3 bg-danger text-white font-semibold rounded-lg hover:bg-red-600 transition duration-150 md:col-span-4">
+                        Log Expense
+                    </button>
+                </form>
+            </div>
+
+            <!-- Expenses Table -->
+            <div class="bg-card-bg p-6 rounded-xl shadow-lg overflow-x-auto">
+                <h2 class="text-2xl font-semibold mb-4 text-danger">Recent Expenses</h2>
+                <table class="min-w-full divide-y divide-gray-200">
+                    <thead class="bg-gray-50">
+                        <tr>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Description</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Category</th>
+                            <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Amount</th>
+                        </tr>
+                    </thead>
+                    <tbody id="expenses-table-body" class="bg-white divide-y divide-gray-200">
+                        <!-- Expense records will be rendered here -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+
+        <!-- 4. Sales & P&L Statistics View (UPDATED) -->
+        <!-- FIX APPLIED: Added flex flex-col gap-6 -->
+        <div id="stats-view" class="hidden flex flex-col gap-6">
+            <h1 class="text-3xl font-extrabold mb-6 text-primary">Sales & Profit/Loss Reports</h1>
+
+            <!-- Filter Controls -->
+            <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8 p-6 bg-card-bg rounded-xl shadow-lg">
+                <div class="md:col-span-1">
+                    <label for="stats-period" class="block text-sm font-medium text-gray-700">Select Period Length</label>
+                    <select id="stats-period" class="w-full p-3 border rounded-lg focus:ring-primary focus:border-primary">
+                        <option value="daily">Daily</option>
+                        <option value="weekly">Weekly</option>
+                        <option value="monthly">Monthly</option>
+                        <option value="all">All Time</option>
+                    </select>
+                </div>
+                <div class="md:col-span-1">
+                    <label for="stats-date-input" class="block text-sm font-medium text-gray-700">Reference Date (Period End)</label>
+                    <input type="date" id="stats-date-input" class="w-full p-3 border rounded-lg focus:ring-primary focus:border-primary">
+                </div>
+                <div class="md:col-span-2 flex items-end space-x-2">
+                    <button id="stats-nav-prev" class="p-3 bg-gray-200 text-gray-700 font-semibold rounded-lg hover:bg-gray-300 transition duration-150 flex-1">
+                        &larr; Previous Period
+                    </button>
+                    <button id="stats-nav-next" class="p-3 bg-gray-200 text-gray-700 font-semibold rounded-lg hover:bg-gray-300 transition duration-150 flex-1">
+                        Next Period &rarr;
+                    </button>
+                </div>
+            </div>
+
+            <!-- Summary Cards -->
+            <div class="grid grid-cols-3 gap-4 mb-8">
+                <div class="bg-card-bg p-4 rounded-xl shadow-md text-center border-b-4 border-primary">
+                    <p class="text-sm text-gray-500">Total Sales</p>
+                    <p id="stat-sales" class="text-2xl font-bold text-primary">$0.00</p>
+                </div>
+                <div class="bg-card-bg p-4 rounded-xl shadow-md text-center border-b-4 border-danger">
+                    <p class="text-sm text-gray-500">Total Expenses</p>
+                    <p id="stat-expenses" class="text-2xl font-bold text-danger">$0.00</p>
+                </div>
+                <div class="bg-card-bg p-4 rounded-xl shadow-md text-center border-b-4 border-secondary">
+                    <p class="text-sm text-gray-500">Net Profit</p>
+                    <p id="stat-profit" class="text-2xl font-bold text-secondary">$0.00</p>
+                </div>
+            </div>
+
+            <!-- Tabs Navigation -->
+            <div class="border-b border-gray-200 mb-6">
+                <nav class="flex space-x-4">
+                    <button class="tab-button active p-3 font-semibold text-gray-500 hover:text-primary transition duration-150" data-tab="charts">Charts View</button>
+                    <button class="tab-button p-3 font-semibold text-gray-500 hover:text-primary transition duration-150" data-tab="tables">Tables View (Raw Data)</button>
+                </nav>
+            </div>
+
+            <!-- Tab Content -->
+            <div id="charts-tab" class="tab-content active-tab">
+                <div class="bg-card-bg p-6 rounded-xl shadow-lg mb-8">
+                    <h2 class="text-xl font-semibold mb-4 text-primary">Profit Trend</h2>
+                    <!-- MODIFIED: Wrapper div added to constrain chart height -->
+                    <div class="relative w-full h-96 max-h-[500px]">
+                        <canvas id="profit-chart" class="w-full h-full"></canvas>
+                    </div>
+                </div>
+            </div>
+
+            <div id="tables-tab" class="tab-content hidden">
+                <!-- Sales Log Table -->
+                <div class="bg-card-bg p-6 rounded-xl shadow-lg overflow-x-auto mb-8">
+                    <h2 class="text-xl font-semibold mb-4 text-primary">Recent Sales Log</h2>
+                    <table class="min-w-full divide-y divide-gray-200">
+                        <thead class="bg-gray-50">
+                            <tr>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Items</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Total Amount</th>
+                            </tr>
+                        </thead>
+                        <tbody id="sales-log-body" class="bg-white divide-y divide-gray-200">
+                            <!-- Sales records will be rendered here -->
+                        </tbody>
+                    </table>
+                </div>
+
+                <!-- Expenses Log Table -->
+                <div class="bg-card-bg p-6 rounded-xl shadow-lg overflow-x-auto">
+                    <h2 class="text-xl font-semibold mb-4 text-danger">Recent Expenses Log</h2>
+                    <table class="min-w-full divide-y divide-gray-200">
+                        <thead class="bg-gray-50">
+                            <tr>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Description</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Category</th>
+                                <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Amount</th>
+                            </tr>
+                        </thead>
+                        <tbody id="expenses-log-body" class="bg-white divide-y divide-gray-200">
+                            <!-- Expense records will be rendered here -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+    </main>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            // --- Helper Functions and UI Management ---
+
+            const $ = id => document.getElementById(id);
+
+            const showMessage = (text, type = 'success') => {
+                const box = $('message-box');
+                let bgColor, textColor;
+
+                switch (type) {
+                    case 'success':
+                        bgColor = 'bg-secondary';
+                        textColor = 'text-white';
+                        break;
+                    case 'error':
+                        bgColor = 'bg-danger';
+                        textColor = 'text-white';
+                        break;
+                    case 'info':
+                        bgColor = 'bg-primary';
+                        textColor = 'text-white';
+                        break;
+                    default:
+                        bgColor = 'bg-gray-500';
+                        textColor = 'text-white';
+                }
+
+                box.innerHTML = `<div class="p-4 rounded-lg shadow-xl ${bgColor} ${textColor} font-semibold">${text}</div>`;
+                box.classList.remove('opacity-0', 'translate-y-[-20px]');
+                box.classList.add('opacity-100', 'translate-y-0');
+
+                setTimeout(() => {
+                    box.classList.remove('opacity-100', 'translate-y-0');
+                    box.classList.add('opacity-0', 'translate-y-[-20px]');
+                }, 3000);
+            };
+
+            const formatCurrency = (amount) => {
+                return new Intl.NumberFormat('en-US', {
+                    style: 'currency',
+                    currency: 'USD'
+                }).format(amount);
+            };
+
+            // --- IndexedDB Management ---
+
+            const DB_NAME = 'BookKeepPWA_DB';
+            const DB_VERSION = 3; 
+            const STORE_INVENTORY = 'inventory';
+            const STORE_SALES = 'sales';
+            const STORE_EXPENSES = 'expenses'; 
+
+            let db;
+
+            const DBManager = {
+                async initDB() {
+                    return new Promise((resolve, reject) => {
+                        const request = indexedDB.open(DB_NAME, DB_VERSION);
+
+                        request.onupgradeneeded = (event) => {
+                            db = event.target.result;
+                            
+                            if (!db.objectStoreNames.contains(STORE_INVENTORY)) {
+                                db.createObjectStore(STORE_INVENTORY, { keyPath: 'itemId' });
+                            }
+                            if (!db.objectStoreNames.contains(STORE_SALES)) {
+                                db.createObjectStore(STORE_SALES, { keyPath: 'saleId', autoIncrement: true });
+                            }
+                            if (!db.objectStoreNames.contains(STORE_EXPENSES)) {
+                                db.createObjectStore(STORE_EXPENSES, { keyPath: 'expenseId', autoIncrement: true });
+                            }
+                        };
+
+                        request.onsuccess = (event) => {
+                            db = event.target.result;
+                            console.log('IndexedDB opened successfully');
+                            resolve(db);
+                        };
+
+                        request.onerror = (event) => {
+                            console.error('IndexedDB error:', event.target.error);
+                            showMessage('Database failed to open. Check console.', 'error');
+                            reject(event.target.error);
+                        };
+                    });
+                },
+
+                async transaction(storeName, mode, callback) {
+                    const transaction = db.transaction(storeName, mode);
+                    const store = transaction.objectStore(storeName);
+
+                    return new Promise((resolve, reject) => {
+                        transaction.oncomplete = () => resolve();
+                        transaction.onerror = (event) => reject(event.target.error);
+                        callback(store, resolve, reject);
+                    });
+                },
+
+                async addItem(storeName, data) {
+                    try {
+                        await DBManager.transaction(storeName, 'readwrite', (store) => {
+                            store.add(data);
+                        });
+                        return true;
+                    } catch (error) {
+                        console.error(`Error adding item to ${storeName}:`, error);
+                        showMessage(`Error saving item: ${error.name}`, 'error');
+                        return false;
+                    }
+                },
+
+                async updateItem(storeName, data) {
+                    try {
+                        await DBManager.transaction(storeName, 'readwrite', (store) => {
+                            store.put(data);
+                        });
+                        return true;
+                    } catch (error) {
+                        console.error(`Error updating item in ${storeName}:`, error);
+                        showMessage(`Error updating item: ${error.name}`, 'error');
+                        return false;
+                    }
+                },
+
+                async getAll(storeName) {
+                    let results = [];
+                    await DBManager.transaction(storeName, 'readonly', (store, resolve) => {
+                        const request = store.openCursor();
+                        request.onsuccess = (event) => {
+                            const cursor = event.target.result;
+                            if (cursor) {
+                                results.push(cursor.value);
+                                cursor.continue();
+                            } else {
+                                resolve();
+                            }
+                        };
+                    });
+                    return results;
+                },
+
+                async getItem(storeName, key) {
+                     let result = null;
+                     await DBManager.transaction(storeName, 'readonly', (store, resolve) => {
+                        const request = store.get(key);
+                        request.onsuccess = (event) => {
+                            result = event.target.result;
+                            resolve();
+                        };
+                     });
+                     return result;
+                },
+
+                async deleteItem(storeName, key) {
+                    try {
+                        await DBManager.transaction(storeName, 'readwrite', (store) => {
+                            store.delete(key);
+                        });
+                        return true;
+                    } catch (error) {
+                        console.error(`Error deleting item from ${storeName}:`, error);
+                        showMessage(`Error deleting item: ${error.name}`, 'error');
+                        return false;
+                    }
+                }
+            };
+
+            // --- Application State and Logic ---
+
+            let inventory = [];
+            let sales = [];
+            let expenses = []; 
+            let currentCart = []; 
+
+            const state = {
+                currentView: 'sales',
+                statsTab: 'charts',
+                statsRefDate: new Date(), // Defaults to today
+            };
+
+            // --- Date Utility Functions ---
+            
+            const formatDateForInput = (date) => {
+                const y = date.getFullYear();
+                const m = String(date.getMonth() + 1).padStart(2, '0');
+                const d = String(date.getDate()).padStart(2, '0');
+                return `${y}-${m}-${d}`;
+            };
+
+            const addDays = (date, days) => {
+                const result = new Date(date);
+                result.setDate(result.getDate() + days);
+                return result;
+            };
+
+            const addMonths = (date, months) => {
+                const result = new Date(date);
+                result.setMonth(result.getMonth() + months);
+                return result;
+            };
+
+            const addYears = (date, years) => {
+                const result = new Date(date);
+                result.setFullYear(result.getFullYear() + years);
+                return result;
+            };
+
+            // --- Inventory View Logic ---
+
+            const loadInventory = async () => {
+                const rawInventory = await DBManager.getAll(STORE_INVENTORY);
+                inventory = rawInventory.map(item => ({
+                    itemId: item.itemId,
+                    name: item.name,
+                    sellingPrice: item.sellingPrice || item.price || 0, 
+                    stockQuantity: item.stockQuantity || 0,
+                    unitOfMeasure: item.unitOfMeasure || 'ea'
+                }));
+                renderInventoryTable();
+                renderProductGrid();
+            };
+
+            const renderInventoryTable = () => {
+                const tbody = $('inventory-table-body');
+                tbody.innerHTML = '';
+
+                inventory.forEach(item => {
+                    const row = tbody.insertRow();
+                    const stockClass = item.stockQuantity < 5 ? 'bg-red-100 font-bold' : '';
+
+                    row.innerHTML = `
+                        <td class="px-6 py-4 whitespace-nowrap">${item.name}</td>
+                        <td class="px-6 py-4 whitespace-nowrap">${formatCurrency(item.sellingPrice)}</td>
+                        <td class="px-6 py-4 whitespace-nowrap ${stockClass}">${item.stockQuantity} ${item.unitOfMeasure}</td>
+                        <td class="px-6 py-4 whitespace-nowrap">
+                            <button data-item-id="${item.itemId}" class="edit-item-btn text-primary hover:text-indigo-600 font-medium mr-2">Edit</button>
+                            <button data-item-id="${item.itemId}" class="delete-item-btn text-danger hover:text-red-600 font-medium">Delete</button>
+                        </td>
+                    `;
+                });
+
+                document.querySelectorAll('.edit-item-btn').forEach(button => {
+                    button.onclick = () => editItem(button.dataset.itemId);
+                });
+                document.querySelectorAll('.delete-item-btn').forEach(button => {
+                    button.onclick = () => deleteItem(button.dataset.itemId);
+                });
+            };
+
+            const handleInventoryForm = async (event) => {
+                event.preventDefault();
+
+                const itemId = $('item-id').value || crypto.randomUUID();
+                const name = $('item-name').value.trim();
+                const sellingPrice = parseFloat($('item-price').value);
+                const stockQuantity = parseInt($('item-stock').value);
+                const unitOfMeasure = $('item-unit').value.trim();
+
+                const item = {
+                    itemId,
+                    name,
+                    sellingPrice, 
+                    stockQuantity,
+                    unitOfMeasure
+                };
+
+                const isNew = !inventory.some(i => i.itemId === itemId);
+                let success;
+
+                if (isNew) {
+                    success = await DBManager.addItem(STORE_INVENTORY, item);
+                    if (success) showMessage(`${name} added to inventory.`, 'success');
+                } else {
+                    success = await DBManager.updateItem(STORE_INVENTORY, item);
+                    if (success) showMessage(`${name} updated.`, 'info');
+                }
+
+                if (success) {
+                    $('inventory-form').reset();
+                    $('item-id').value = '';
+                    $('inventory-form-title').textContent = 'Add New Item';
+                    $('inventory-submit-btn').textContent = 'Add Item';
+                    $('inventory-cancel-btn').classList.add('hidden');
+                    loadInventory(); 
+                }
+            };
+
+            const editItem = (itemId) => {
+                const item = inventory.find(i => i.itemId === itemId);
+                if (item) {
+                    $('item-id').value = item.itemId;
+                    $('item-name').value = item.name;
+                    $('item-price').value = item.sellingPrice;
+                    $('item-stock').value = item.stockQuantity;
+                    $('item-unit').value = item.unitOfMeasure;
+
+                    $('inventory-form-title').textContent = `Edit Item: ${item.name}`;
+                    $('inventory-submit-btn').textContent = 'Update Item';
+                    $('inventory-cancel-btn').classList.remove('hidden');
+
+                    window.scrollTo({ top: 0, behavior: 'smooth' });
+                }
+            };
+
+            const deleteItem = async (itemId) => {
+                const item = inventory.find(i => i.itemId === itemId);
+                if (confirm(`Are you sure you want to delete ${item.name}? This action cannot be undone.`)) {
+                    const success = await DBManager.deleteItem(STORE_INVENTORY, itemId);
+                    if (success) {
+                        showMessage(`${item.name} deleted.`, 'error');
+                        loadInventory();
+                    }
+                }
+            };
+
+            $('inventory-cancel-btn').onclick = () => {
+                $('inventory-form').reset();
+                $('item-id').value = '';
+                $('inventory-form-title').textContent = 'Add New Item';
+                $('inventory-submit-btn').textContent = 'Add Item';
+                $('inventory-cancel-btn').classList.add('hidden');
+            };
+
+            // --- Sales/Register View Logic (Unchanged) ---
+
+            const renderProductGrid = (searchTerm = '') => {
+                const grid = $('product-list');
+                grid.innerHTML = '';
+                const term = searchTerm.toLowerCase();
+
+                const filteredInventory = inventory.filter(item =>
+                    item.name.toLowerCase().includes(term)
+                );
+
+                if (filteredInventory.length === 0) {
+                     grid.innerHTML = '<p class="col-span-4 text-center text-gray-500">No products found or in stock.</p>';
+                }
+
+                filteredInventory.forEach(item => {
+                    const card = document.createElement('div');
+                    const lowStock = item.stockQuantity < 5;
+                    const disabled = item.stockQuantity <= 0;
+
+                    card.className = `product-card p-4 rounded-xl shadow-md cursor-pointer transition duration-150 ${disabled ? 'bg-gray-200 opacity-60' : 'bg-secondary/10 hover:bg-secondary/20 hover:shadow-lg'}`;
+                    card.innerHTML = `
+                        <p class="font-semibold text-gray-900 truncate">${item.name}</p>
+                        <p class="text-xl font-extrabold text-primary mt-1">${formatCurrency(item.sellingPrice)}</p>
+                        <p class="text-xs ${lowStock ? 'text-danger font-bold' : 'text-gray-500'}">Stock: ${item.stockQuantity} ${item.unitOfMeasure}</p>
+                    `;
+                    card.onclick = () => addItemToCart(item);
+                    card.dataset.itemId = item.itemId;
+                    grid.appendChild(card);
+                });
+            };
+
+            const addItemToCart = (item) => {
+                if (item.stockQuantity <= 0) {
+                    showMessage(`${item.name} is out of stock!`, 'error');
+                    return;
+                }
+
+                const cartItem = currentCart.find(c => c.itemId === item.itemId);
+
+                if (cartItem) {
+                    if (cartItem.quantity < item.stockQuantity) {
+                        cartItem.quantity++;
+                    } else {
+                        showMessage(`Max stock reached for ${item.name}.`, 'error');
+                    }
+                } else {
+                    currentCart.push({
+                        itemId: item.itemId,
+                        name: item.name,
+                        price: item.sellingPrice,
+                        quantity: 1
+                    });
+                }
+                renderCart();
+            };
+
+            const renderCart = () => {
+                const cartContainer = $('cart-items');
+                cartContainer.innerHTML = '';
+
+                let subtotal = 0;
+
+                currentCart.forEach(item => {
+                    const itemTotal = item.price * item.quantity;
+                    subtotal += itemTotal;
+
+                    const div = document.createElement('div');
+                    div.className = 'flex items-center justify-between p-2 border-b last:border-b-0';
+                    div.innerHTML = `
+                        <div class="flex-1">
+                            <p class="font-medium truncate">${item.name}</p>
+                            <p class="text-sm text-gray-500">${item.quantity} x ${formatCurrency(item.price)}</p>
+                        </div>
+                        <div class="flex items-center space-x-2">
+                            <button data-id="${item.itemId}" class="qty-btn text-primary hover:text-indigo-600 font-bold">-</button>
+                            <span class="font-bold w-12 text-center">${formatCurrency(itemTotal)}</span>
+                            <button data-id="${item.itemId}" class="qty-btn text-primary hover:text-indigo-600 font-bold">+</button>
+                        </div>
+                    `;
+                    cartContainer.appendChild(div);
+                });
+
+                const total = subtotal; 
+                $('cart-subtotal').textContent = formatCurrency(subtotal);
+                $('cart-total').textContent = formatCurrency(total);
+
+                $('complete-sale-btn').disabled = currentCart.length === 0;
+
+                document.querySelectorAll('.qty-btn').forEach(btn => {
+                    btn.onclick = (e) => updateCartQuantity(e.target.dataset.id, e.target.textContent.trim());
+                });
+            };
+
+            const updateCartQuantity = (itemId, action) => {
+                const item = currentCart.find(c => c.itemId === itemId);
+                const inventoryItem = inventory.find(i => i.itemId === itemId);
+
+                if (!item || !inventoryItem) return;
+
+                if (action === '+') {
+                    if (item.quantity < inventoryItem.stockQuantity) {
+                        item.quantity++;
+                    } else {
+                        showMessage(`Cannot add more: Max stock reached for ${item.name}.`, 'error');
+                    }
+                } else if (action === '-') {
+                    item.quantity--;
+                    if (item.quantity <= 0) {
+                        currentCart = currentCart.filter(c => c.itemId !== itemId);
+                    }
+                }
+                renderCart();
+            };
+
+            const completeSale = async () => {
+                if (currentCart.length === 0) return;
+
+                const saleTime = Date.now();
+                let totalAmount = 0;
+                let itemsSold = [];
+
+                for (const cartItem of currentCart) {
+                    const itemTotal = cartItem.price * cartItem.quantity;
+                    totalAmount += itemTotal;
+
+                    itemsSold.push({
+                        itemId: cartItem.itemId,
+                        quantity: cartItem.quantity,
+                        priceAtSale: cartItem.price,
+                    });
+
+                    const stockItem = inventory.find(i => i.itemId === cartItem.itemId);
+                    if (stockItem) {
+                        stockItem.stockQuantity -= cartItem.quantity;
+                        await DBManager.updateItem(STORE_INVENTORY, stockItem);
+                    }
+                }
+
+                const saleRecord = {
+                    timestamp: saleTime,
+                    totalAmount: totalAmount,
+                    itemsSold: itemsSold,
+                    paymentMethod: $('payment-method').value
+                };
+
+                const success = await DBManager.addItem(STORE_SALES, saleRecord);
+
+                if (success) {
+                    showMessage(`Sale completed for ${formatCurrency(totalAmount)}.`, 'success');
+                    currentCart = [];
+                    renderCart();
+                    loadInventory(); 
+                } else {
+                    showMessage('Error completing sale.', 'error');
+                }
+            };
+
+            $('product-search').oninput = (e) => renderProductGrid(e.target.value);
+            $('clear-transaction-btn').onclick = () => {
+                currentCart = [];
+                renderCart();
+                showMessage('Transaction cleared.', 'info');
+            };
+            $('complete-sale-btn').onclick = completeSale;
+
+            // --- Expense View Logic (Unchanged) ---
+
+            const loadExpenses = async () => {
+                expenses = await DBManager.getAll(STORE_EXPENSES);
+                renderExpensesTable();
+            };
+
+            const handleExpenseForm = async (event) => {
+                event.preventDefault();
+
+                const expenseAmount = parseFloat($('expense-amount').value);
+                const expenseDescription = $('expense-description').value.trim();
+                const expenseCategory = $('expense-category').value;
+
+                if (!expenseCategory) {
+                    showMessage('Please select an expense category.', 'error');
+                    return;
+                }
+
+                const expenseRecord = {
+                    timestamp: Date.now(),
+                    amount: expenseAmount,
+                    description: expenseDescription,
+                    category: expenseCategory
+                };
+
+                const success = await DBManager.addItem(STORE_EXPENSES, expenseRecord);
+                if (success) {
+                    showMessage(`Expense logged: ${formatCurrency(expenseAmount)} for ${expenseDescription}.`, 'danger');
+                    $('expense-form').reset();
+                    loadExpenses();
+                } else {
+                    showMessage('Error logging expense.', 'error');
+                }
+            };
+
+            const renderExpensesTable = () => {
+                const tbody = $('expenses-table-body');
+                tbody.innerHTML = '';
+
+                // Sort by timestamp descending
+                const sortedExpenses = [...expenses].sort((a, b) => b.timestamp - a.timestamp);
+
+                sortedExpenses.forEach(expense => {
+                    const date = new Date(expense.timestamp).toLocaleDateString();
+
+                    const row = tbody.insertRow();
+                    row.innerHTML = `
+                        <td class="px-6 py-4 whitespace-nowrap">${date}</td>
+                        <td class="px-6 py-4">${expense.description}</td>
+                        <td class="px-6 py-4 whitespace-nowrap">${expense.category}</td>
+                        <td class="px-6 py-4 whitespace-nowrap text-right text-danger font-bold">${formatCurrency(expense.amount)}</td>
+                    `;
+                });
+            };
+
+            $('expense-form').addEventListener('submit', handleExpenseForm);
+
+            // --- Statistics View Logic ---
+
+            let profitChartInstance = null;
+
+            const initializeStatsControls = () => {
+                // Set default reference date to today
+                $('stats-date-input').value = formatDateForInput(state.statsRefDate);
+
+                $('stats-period').onchange = updateStats;
+                $('stats-date-input').onchange = (e) => {
+                    state.statsRefDate = new Date(e.target.value);
+                    updateStats();
+                };
+
+                $('stats-nav-prev').onclick = () => navigatePeriod(-1);
+                $('stats-nav-next').onclick = () => navigatePeriod(1);
+                
+                document.querySelectorAll('.tab-button').forEach(button => {
+                    button.onclick = (e) => switchStatsTab(e.target.dataset.tab);
+                });
+            };
+
+            const navigatePeriod = (direction) => {
+                const period = $('stats-period').value;
+                const currentDate = state.statsRefDate;
+                
+                let newDate = new Date(currentDate);
+
+                if (period === 'daily') {
+                    newDate = addDays(newDate, direction);
+                } else if (period === 'weekly') {
+                    newDate = addDays(newDate, direction * 7);
+                } else if (period === 'monthly') {
+                    newDate = addMonths(newDate, direction);
+                } else if (period === 'all') {
+                    // Cannot navigate 'All Time', but we can navigate by year
+                    newDate = addYears(newDate, direction);
+                }
+                
+                state.statsRefDate = newDate;
+                $('stats-date-input').value = formatDateForInput(newDate);
+                updateStats();
+            };
+
+            const switchStatsTab = (newTab) => {
+                state.statsTab = newTab;
+                document.querySelectorAll('.tab-content').forEach(content => content.classList.add('hidden'));
+                document.querySelectorAll('.tab-button').forEach(button => button.classList.remove('active'));
+
+                $(`${newTab}-tab`).classList.remove('hidden');
+                document.querySelector(`.tab-button[data-tab="${newTab}"]`).classList.add('active');
+            };
+
+            const loadSalesData = async () => {
+                // 1. Ensure inventory is loaded and processed first, as it is needed to render sales logs accurately.
+                await loadInventory(); 
+                
+                // 2. Load Sales and Expenses
+                sales = await DBManager.getAll(STORE_SALES);
+                expenses = await DBManager.getAll(STORE_EXPENSES);
+                
+                // 3. Update all stats
+                updateStats();
+            };
+
+            const updateStats = () => {
+                const period = $('stats-period').value;
+                const referenceTimestamp = state.statsRefDate.getTime();
+                
+                const filteredSales = filterByPeriod(sales, period, referenceTimestamp);
+                const filteredExpenses = filterByPeriod(expenses, period, referenceTimestamp);
+
+                let totalSales = 0;
+                let totalExpenses = 0;
+
+                filteredSales.forEach(sale => {
+                    totalSales += sale.totalAmount;
+                });
+                
+                filteredExpenses.forEach(expense => {
+                    totalExpenses += expense.amount;
+                });
+
+                const netProfit = totalSales - totalExpenses;
+
+                $('stat-sales').textContent = formatCurrency(totalSales);
+                $('stat-expenses').textContent = formatCurrency(totalExpenses);
+                $('stat-profit').textContent = formatCurrency(netProfit);
+
+                renderSalesLog(filteredSales);
+                renderExpensesLog(filteredExpenses); // NEW: Render expense log table
+                renderProfitChart(filteredSales, filteredExpenses, period);
+            };
+
+            const filterByPeriod = (data, period, referenceTimestamp) => {
+                if (period === 'all') {
+                    return data;
+                }
+                
+                // Set the end of the period to the end of the reference day
+                const endOfPeriod = new Date(referenceTimestamp);
+                endOfPeriod.setHours(23, 59, 59, 999);
+                
+                let startOfPeriod = new Date(endOfPeriod);
+                startOfPeriod.setHours(0, 0, 0, 0);
+
+                if (period === 'daily') {
+                    startOfPeriod = new Date(endOfPeriod);
+                    startOfPeriod.setHours(0, 0, 0, 0);
+                } else if (period === 'weekly') {
+                    startOfPeriod = addDays(startOfPeriod, -6); // 7 days total including the end day
+                } else if (period === 'monthly') {
+                    startOfPeriod = addMonths(startOfPeriod, -1);
+                    startOfPeriod.setDate(startOfPeriod.getDate() + 1);
+                }
+
+                const startTime = startOfPeriod.getTime();
+                const endTime = endOfPeriod.getTime();
+                
+                return data.filter(item => item.timestamp >= startTime && item.timestamp <= endTime);
+            };
+
+            const renderSalesLog = (filteredSales) => {
+                const tbody = $('sales-log-body');
+                tbody.innerHTML = '';
+
+                const sortedSales = [...filteredSales].sort((a, b) => b.timestamp - a.timestamp);
+
+                sortedSales.forEach(sale => {
+                    const date = new Date(sale.timestamp).toLocaleString();
+                    const itemsList = sale.itemsSold.map(item => `${item.quantity}x (${inventory.find(i => i.itemId === item.itemId)?.name || 'Unknown'})`).join(', ');
+
+                    const row = tbody.insertRow();
+                    row.innerHTML = `
+                        <td class="px-6 py-4 whitespace-nowrap">${date}</td>
+                        <td class="px-6 py-4">${itemsList}</td>
+                        <td class="px-6 py-4 whitespace-nowrap text-secondary font-bold">${formatCurrency(sale.totalAmount)}</td>
+                    `;
+                });
+            };
+            
+            // NEW: Function to render the Expenses Log
+            const renderExpensesLog = (filteredExpenses) => {
+                const tbody = $('expenses-log-body');
+                tbody.innerHTML = '';
+
+                const sortedExpenses = [...filteredExpenses].sort((a, b) => b.timestamp - a.timestamp);
+
+                sortedExpenses.forEach(expense => {
+                    const date = new Date(expense.timestamp).toLocaleString();
+                    
+                    const row = tbody.insertRow();
+                    row.innerHTML = `
+                        <td class="px-6 py-4 whitespace-nowrap">${date}</td>
+                        <td class="px-6 py-4">${expense.description}</td>
+                        <td class="px-6 py-4 whitespace-nowrap">${expense.category}</td>
+                        <td class="px-6 py-4 whitespace-nowrap text-right text-danger font-bold">${formatCurrency(expense.amount)}</td>
+                    `;
+                });
+            };
+
+
+            const aggregateDataForChart = (filteredSales, filteredExpenses, period) => {
+                const aggregation = {}; 
+                
+                const getPeriodKey = (date, period) => {
+                    const d = new Date(date);
+                    if (period === 'daily') return d.toISOString().split('T')[0];
+                    if (period === 'weekly') {
+                        const dayNum = d.getUTCDay() || 7;
+                        d.setUTCDate(d.getUTCDate() + 4 - dayNum);
+                        const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+                        const weekNo = Math.ceil((((d - yearStart) / 86400000) + 1) / 7);
+                        return `${d.getFullYear()}-W${weekNo}`;
+                    }
+                    return `${d.getFullYear()}-${d.getMonth() + 1}`; 
+                };
+                
+                // Aggregate Sales
+                filteredSales.forEach(sale => {
+                    const date = new Date(sale.timestamp);
+                    const key = getPeriodKey(date, period);
+
+                    if (!aggregation[key]) {
+                        aggregation[key] = { sales: 0, expenses: 0 };
+                    }
+                    aggregation[key].sales += sale.totalAmount;
+                });
+                
+                // Aggregate Expenses
+                filteredExpenses.forEach(expense => {
+                    const date = new Date(expense.timestamp);
+                    const key = getPeriodKey(date, period);
+
+                    if (!aggregation[key]) {
+                        aggregation[key] = { sales: 0, expenses: 0 };
+                    }
+                    aggregation[key].expenses += expense.amount;
+                });
+
+                const sortedKeys = Object.keys(aggregation).sort();
+                const labels = sortedKeys;
+                const salesData = sortedKeys.map(key => aggregation[key].sales);
+                const netProfitData = sortedKeys.map(key => aggregation[key].sales - aggregation[key].expenses);
+
+                return { labels, salesData, netProfitData };
+            };
+
+            const renderProfitChart = (filteredSales, filteredExpenses, period) => {
+                const chartData = aggregateDataForChart(filteredSales, filteredExpenses, period);
+                const ctx = $('profit-chart').getContext('2d');
+
+                if (profitChartInstance) {
+                    profitChartInstance.destroy();
+                }
+
+                profitChartInstance = new Chart(ctx, {
+                    type: 'line',
+                    data: {
+                        labels: chartData.labels,
+                        datasets: [
+                            {
+                                label: 'Total Sales',
+                                data: chartData.salesData,
+                                borderColor: '#4f46e5',
+                                backgroundColor: 'rgba(79, 70, 229, 0.1)',
+                                tension: 0.3,
+                                fill: true,
+                                yAxisID: 'y'
+                            },
+                            {
+                                label: 'Net Profit (Sales - Expenses)',
+                                data: chartData.netProfitData,
+                                borderColor: '#10b981',
+                                backgroundColor: 'rgba(16, 185, 129, 0.1)',
+                                tension: 0.3,
+                                fill: true,
+                                yAxisID: 'y'
+                            }
+                        ]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false, // Essential for height control
+                        plugins: {
+                            legend: {
+                                position: 'top',
+                            },
+                            title: {
+                                display: true,
+                                text: `Sales and Net Profit Trend (${period.toUpperCase()})`
+                            }
+                        },
+                        scales: {
+                            y: {
+                                beginAtZero: false, 
+                                title: {
+                                    display: true,
+                                    text: 'Amount (USD)'
+                                }
+                            }
+                        }
+                    }
+                });
+            };
+
+            // --- View Switching ---
+
+            const switchView = async (newView) => { // CHANGED to async
+                document.querySelectorAll('.active-view').forEach(view => {
+                    view.classList.add('hidden');
+                    view.classList.remove('active-view');
+                });
+                const targetView = $(`${newView}-view`);
+                targetView.classList.remove('hidden');
+                targetView.classList.add('active-view');
+                state.currentView = newView;
+
+                // Load data for the specific view on switch
+                if (newView === 'inventory') {
+                    await loadInventory(); // ADDED await
+                } else if (newView === 'expenses') {
+                    await loadExpenses(); // ADDED await
+                } else if (newView === 'stats') {
+                    initializeStatsControls(); // Initialize controls on first load
+                    await loadSalesData(); // ADDED await
+                    switchStatsTab(state.statsTab); // Ensure correct tab is active
+                }
+            };
+
+            document.querySelectorAll('.nav-button').forEach(button => {
+                button.addEventListener('click', (e) => {
+                    // Call switchView asynchronously to ensure data loading completes before the view is fully rendered/interacted with
+                    switchView(e.target.dataset.view).catch(err => {
+                        console.error("Error switching view:", err);
+                        showMessage("Failed to load data for the view. See console.", 'error');
+                    });
+                });
+            });
+
+            // --- Initialization ---
+
+            DBManager.initDB().then(() => {
+                // Initialize the main views after DB is ready
+                switchView(state.currentView);
+                loadInventory();
+            });
+
+            $('inventory-form').addEventListener('submit', handleInventoryForm);
+
+        });
+    </script>
+</body>
+</html>
