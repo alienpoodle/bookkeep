@@ -166,7 +166,8 @@
 
             <!-- Add Expense Form -->
             <div class="bg-card-bg p-6 rounded-xl shadow-lg mb-8 border-t-4 border-danger">
-                <h2 class="text-2xl font-semibold mb-4 text-danger">Log New Expense</h2>
+                <!-- ADDED ID for form title -->
+                <h2 class="text-2xl font-semibold mb-4 text-danger" id="expense-form-title">Log New Expense</h2>
                 <form id="expense-form" class="grid grid-cols-1 md:grid-cols-4 gap-4">
                     <input type="hidden" id="expense-id">
                     <input type="text" id="expense-description" placeholder="Description (e.g., Propane refill, Permit fee)" required class="p-3 border rounded-lg focus:ring-danger focus:border-danger md:col-span-2">
@@ -180,8 +181,12 @@
                         <option value="Other">Other</option>
                     </select>
                     <input type="number" id="expense-amount" placeholder="Amount" step="0.01" required class="p-3 border rounded-lg focus:ring-danger focus:border-danger">
-                    <button type="submit" class="p-3 bg-danger text-white font-semibold rounded-lg hover:bg-red-600 transition duration-150 md:col-span-4">
+                    <button type="submit" id="expense-submit-btn" class="p-3 bg-danger text-white font-semibold rounded-lg hover:bg-red-600 transition duration-150 md:col-span-4">
                         Log Expense
+                    </button>
+                    <!-- ADDED CANCEL BUTTON for editing -->
+                    <button type="button" id="expense-cancel-btn" class="p-3 bg-gray-500 text-white font-semibold rounded-lg hover:bg-gray-600 transition duration-150 hidden md:col-span-4">
+                        Cancel Edit
                     </button>
                 </form>
             </div>
@@ -196,6 +201,8 @@
                             <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Description</th>
                             <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Category</th>
                             <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Amount</th>
+                            <!-- ADDED Actions header -->
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
                         </tr>
                     </thead>
                     <tbody id="expenses-table-body" class="bg-white divide-y divide-gray-200">
@@ -299,6 +306,7 @@
                                 <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Description</th>
                                 <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Category</th>
                                 <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Amount</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
                             </tr>
                         </thead>
                         <tbody id="expenses-log-body" class="bg-white divide-y divide-gray-200">
@@ -801,16 +809,58 @@
             };
             $('complete-sale-btn').onclick = completeSale;
 
-            // --- Expense View Logic (Unchanged) ---
+            // --- Expense View Logic ---
 
             const loadExpenses = async () => {
                 expenses = await DBManager.getAll(STORE_EXPENSES);
                 renderExpensesTable();
             };
+            
+            const resetExpenseForm = () => {
+                $('expense-form').reset();
+                $('expense-id').value = '';
+                $('expense-form-title').textContent = 'Log New Expense';
+                $('expense-submit-btn').textContent = 'Log Expense';
+                $('expense-cancel-btn').classList.add('hidden');
+            };
+            
+            $('expense-cancel-btn').onclick = resetExpenseForm;
+
+            const editExpense = (expenseId) => {
+                const expense = expenses.find(e => e.expenseId == expenseId);
+                if (expense) {
+                    $('expense-id').value = expense.expenseId;
+                    $('expense-description').value = expense.description;
+                    $('expense-category').value = expense.category;
+                    $('expense-amount').value = expense.amount;
+
+                    $('expense-form-title').textContent = `Edit Expense: ${expense.description}`;
+                    $('expense-submit-btn').textContent = 'Update Expense';
+                    $('expense-cancel-btn').classList.remove('hidden');
+
+                    window.scrollTo({ top: 0, behavior: 'smooth' });
+                }
+            };
+
+            const deleteExpense = async (expenseId) => {
+                // Ensure expenseId is an integer for IndexedDB lookup
+                const idToDelete = parseInt(expenseId);
+                const expense = expenses.find(e => e.expenseId === idToDelete);
+
+                if (expense && confirm(`Are you sure you want to delete the expense: ${expense.description} (${formatCurrency(expense.amount)})?`)) {
+                    const success = await DBManager.deleteItem(STORE_EXPENSES, idToDelete);
+                    if (success) {
+                        showMessage(`${expense.description} deleted.`, 'error');
+                        loadExpenses();
+                    }
+                }
+            };
+
 
             const handleExpenseForm = async (event) => {
                 event.preventDefault();
 
+                const expenseId = $('expense-id').value ? parseInt($('expense-id').value) : null;
                 const expenseAmount = parseFloat($('expense-amount').value);
                 const expenseDescription = $('expense-description').value.trim();
                 const expenseCategory = $('expense-category').value;
@@ -820,20 +870,31 @@
                     return;
                 }
 
+                // If editing, preserve original timestamp. Otherwise, set new timestamp.
+                const originalTimestamp = expenseId ? expenses.find(e => e.expenseId === expenseId)?.timestamp : Date.now();
+
                 const expenseRecord = {
-                    timestamp: Date.now(),
+                    ...(expenseId && { expenseId }), 
+                    timestamp: originalTimestamp || Date.now(),
                     amount: expenseAmount,
                     description: expenseDescription,
                     category: expenseCategory
                 };
 
-                const success = await DBManager.addItem(STORE_EXPENSES, expenseRecord);
+                let success;
+                if (expenseId) {
+                    success = await DBManager.updateItem(STORE_EXPENSES, expenseRecord);
+                    if (success) showMessage(`Expense updated: ${expenseDescription}.`, 'info');
+                } else {
+                    success = await DBManager.addItem(STORE_EXPENSES, expenseRecord);
+                    if (success) showMessage(`Expense logged: ${formatCurrency(expenseAmount)} for ${expenseDescription}.`, 'danger');
+                }
+
                 if (success) {
-                    showMessage(`Expense logged: ${formatCurrency(expenseAmount)} for ${expenseDescription}.`, 'danger');
-                    $('expense-form').reset();
+                    resetExpenseForm();
                     loadExpenses();
                 } else {
-                    showMessage('Error logging expense.', 'error');
+                    showMessage('Error processing expense.', 'error');
                 }
             };
 
@@ -853,7 +914,19 @@
                         <td class="px-6 py-4">${expense.description}</td>
                         <td class="px-6 py-4 whitespace-nowrap">${expense.category}</td>
                         <td class="px-6 py-4 whitespace-nowrap text-right text-danger font-bold">${formatCurrency(expense.amount)}</td>
+                        <td class="px-6 py-4 whitespace-nowrap">
+                            <button data-expense-id="${expense.expenseId}" class="edit-expense-btn text-primary hover:text-indigo-600 font-medium mr-2">Edit</button>
+                            <button data-expense-id="${expense.expenseId}" class="delete-expense-btn text-danger hover:text-red-600 font-medium">Delete</button>
+                        </td>
                     `;
+                });
+                
+                // Add listeners to new buttons
+                document.querySelectorAll('.edit-expense-btn').forEach(button => {
+                    button.onclick = () => editExpense(button.dataset.expenseId);
+                });
+                document.querySelectorAll('.delete-expense-btn').forEach(button => {
+                    button.onclick = () => deleteExpense(button.dataset.expenseId);
                 });
             };
 
