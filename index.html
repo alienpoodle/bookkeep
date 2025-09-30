@@ -1058,11 +1058,22 @@
                 const tbody = $('sales-log-body');
                 tbody.innerHTML = '';
 
+                // Create a quick lookup map for inventory items to ensure fast and correct lookup
+                const inventoryMap = inventory.reduce((map, item) => {
+                    map[item.itemId] = item;
+                    return map;
+                }, {});
+
                 const sortedSales = [...filteredSales].sort((a, b) => b.timestamp - a.timestamp);
 
                 sortedSales.forEach(sale => {
                     const date = new Date(sale.timestamp).toLocaleString();
-                    const itemsList = sale.itemsSold.map(item => `${item.quantity}x (${inventory.find(i => i.itemId === item.itemId)?.name || 'Unknown'})`).join(', ');
+                    
+                    // FIX: Use the created inventoryMap for item lookup
+                    const itemsList = sale.itemsSold.map(item => {
+                        const inventoriedItem = inventoryMap[item.itemId];
+                        return `${item.quantity}x (${inventoriedItem?.name || 'Unknown Item'})`; // Changed fallback for clarity
+                    }).join(', ');
 
                     const row = tbody.insertRow();
                     row.innerHTML = `
@@ -1089,7 +1100,19 @@
                         <td class="px-6 py-4">${expense.description}</td>
                         <td class="px-6 py-4 whitespace-nowrap">${expense.category}</td>
                         <td class="px-6 py-4 whitespace-nowrap text-right text-danger font-bold">${formatCurrency(expense.amount)}</td>
+                        <td class="px-6 py-4 whitespace-nowrap">
+                            <button data-expense-id="${expense.expenseId}" class="edit-expense-btn text-primary hover:text-indigo-600 font-medium mr-2">Edit</button>
+                            <button data-expense-id="${expense.expenseId}" class="delete-expense-btn text-danger hover:text-red-600 font-medium">Delete</button>
+                        </td>
                     `;
+                });
+                
+                // Add listeners to new buttons
+                document.querySelectorAll('.edit-expense-btn').forEach(button => {
+                    button.onclick = () => editExpense(button.dataset.expenseId);
+                });
+                document.querySelectorAll('.delete-expense-btn').forEach(button => {
+                    button.onclick = () => deleteExpense(button.dataset.expenseId);
                 });
             };
 
