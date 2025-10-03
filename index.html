@@ -28,6 +28,23 @@
             border-bottom: 3px solid #4f46e5;
             color: #4f46e5;
         }
+        /* Custom styles for sort indicators */
+        .sortable {
+            user-select: none;
+        }
+        /* Hidden arrow by default */
+        .sortable .sort-icon {
+            opacity: 0.5;
+            transition: opacity 0.2s;
+        }
+        /* Active arrow styles */
+        .sortable:hover .sort-icon,
+        .sort-active .sort-icon {
+            opacity: 1;
+        }
+        .sort-active {
+            color: #4f46e5; /* Highlight active sort column */
+        }
     </style>
     <script>
         tailwind.config = {
@@ -278,12 +295,22 @@
             </div>
 
             <!-- Tab Content -->
-            <div id="charts-tab" class="tab-content active-tab">
-                <div class="bg-card-bg p-6 rounded-xl shadow-lg mb-8">
+            <div id="charts-tab" class="tab-content active-tab space-y-8">
+                <!-- Profit Trend Chart -->
+                <div class="bg-card-bg p-6 rounded-xl shadow-lg">
                     <h2 class="text-xl font-semibold mb-4 text-primary">Profit Trend</h2>
                     <!-- MODIFIED: Wrapper div added to constrain chart height -->
                     <div class="relative w-full h-96 max-h-[500px]">
                         <canvas id="profit-chart" class="w-full h-full"></canvas>
+                    </div>
+                </div>
+
+                <!-- NEW: Expenses Breakdown Pie Chart -->
+                <div class="bg-card-bg p-6 rounded-xl shadow-lg">
+                    <h2 class="text-xl font-semibold mb-4 text-danger">Expenses Breakdown by Category</h2>
+                    <!-- Pie charts look better constrained and centered -->
+                    <div class="relative w-full h-96 max-w-lg mx-auto"> 
+                        <canvas id="expense-pie-chart"></canvas>
                     </div>
                 </div>
             </div>
@@ -294,15 +321,19 @@
                     <h2 class="text-xl font-semibold mb-4 text-primary">Recent Sales Log</h2>
                     <table class="min-w-full divide-y divide-gray-200">
                         <thead class="bg-gray-50">
-                            <tr>
-                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date</th>
+                            <tr id="sales-log-header">
+                                <!-- ADDED data-sort-key and sortable class for sorting -->
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer sortable" data-sort-key="timestamp">Date <span class="sort-icon"></span></th>
                                 <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Items</th>
-                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Total Amount</th>
+                                <!-- ADDED data-sort-key and sortable class for sorting -->
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer sortable" data-sort-key="totalAmount">Total Amount <span class="sort-icon"></span></th>
                             </tr>
                         </thead>
                         <tbody id="sales-log-body" class="bg-white divide-y divide-gray-200">
                             <!-- Sales records will be rendered here -->
                         </tbody>
+                        <!-- ADDED Footer for Totals -->
+                        <tfoot id="sales-log-footer" class="bg-gray-100 font-bold border-t-2 border-primary"></tfoot>
                     </table>
                 </div>
 
@@ -311,17 +342,20 @@
                     <h2 class="text-xl font-semibold mb-4 text-danger">Recent Expenses Log</h2>
                     <table class="min-w-full divide-y divide-gray-200">
                         <thead class="bg-gray-50">
-                            <tr>
-                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date</th>
-                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Description</th>
-                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Category</th>
-                                <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Amount</th>
+                            <tr id="expenses-log-header">
+                                <!-- ADDED data-sort-key and sortable class for sorting -->
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer sortable" data-sort-key="timestamp">Date <span class="sort-icon"></span></th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer sortable" data-sort-key="description">Description <span class="sort-icon"></span></th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer sortable" data-sort-key="category">Category <span class="sort-icon"></span></th>
+                                <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer sortable" data-sort-key="amount">Amount <span class="sort-icon"></span></th>
                                 <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
                             </tr>
                         </thead>
                         <tbody id="expenses-log-body" class="bg-white divide-y divide-gray-200">
                             <!-- Expense records will be rendered here -->
                         </tbody>
+                        <!-- ADDED Footer for Totals -->
+                        <tfoot id="expenses-log-footer" class="bg-gray-100 font-bold border-t-2 border-danger"></tfoot>
                     </table>
                 </div>
             </div>
@@ -371,9 +405,10 @@
             };
 
             const formatCurrency = (amount) => {
+                // CHANGED currency from 'USD' to 'XCD'
                 return new Intl.NumberFormat('en-US', {
                     style: 'currency',
-                    currency: 'USD'
+                    currency: 'XCD' 
                 }).format(amount);
             };
 
@@ -506,11 +541,14 @@
             let sales = [];
             let expenses = []; 
             let currentCart = []; 
+            let sortingListenersAttached = false; // Flag to prevent attaching multiple listeners
 
             const state = {
                 currentView: 'sales',
                 statsTab: 'charts',
                 statsRefDate: new Date(), // Defaults to today
+                salesSort: { key: 'timestamp', direction: 'desc' }, // Default sort for sales
+                expenseSort: { key: 'timestamp', direction: 'desc' } // Default sort for expenses
             };
 
             // --- Date Utility Functions ---
@@ -760,7 +798,7 @@
                     if (item.quantity < inventoryItem.stockQuantity) {
                         item.quantity++;
                     } else {
-                        showMessage(`Cannot add more: Max stock reached for ${item.name}.`, 'error');
+                        showMessage(`Max stock reached for ${item.name}.`, 'error');
                     }
                 } else if (action === '-') {
                     item.quantity--;
@@ -948,6 +986,7 @@
             // --- Statistics View Logic ---
 
             let profitChartInstance = null;
+            let expenseChartInstance = null; // NEW: Expense chart instance
 
             const initializeStatsControls = () => {
                 // Set default reference date to today
@@ -967,6 +1006,13 @@
                 });
                 
                 $('export-report-btn').onclick = exportReportToPDF;
+
+                // Attach sorting listeners only once
+                if (!sortingListenersAttached) {
+                    setupTableSorting('sales-log-header', 'salesSort', updateStats);
+                    setupTableSorting('expenses-log-header', 'expenseSort', updateStats);
+                    sortingListenersAttached = true;
+                }
             };
 
             const navigatePeriod = (direction) => {
@@ -1037,8 +1083,9 @@
                 $('stat-profit').textContent = formatCurrency(netProfit);
 
                 renderSalesLog(filteredSales);
-                renderExpensesLog(filteredExpenses); // NEW: Render expense log table
+                renderExpensesLog(filteredExpenses); 
                 renderProfitChart(filteredSales, filteredExpenses, period);
+                renderExpensePieChart(filteredExpenses, period); // NEW: Call the new chart renderer
             };
 
             const filterByPeriod = (data, period, referenceTimestamp) => {
@@ -1086,10 +1133,61 @@
                 
                 return data.filter(item => item.timestamp >= startTime && item.timestamp <= endTime);
             };
+            
+            // --- New Sorting Logic ---
+            
+            const sortData = (data, key, direction) => {
+                if (!key) return data;
+
+                return data.sort((a, b) => {
+                    let valA = a[key];
+                    let valB = b[key];
+
+                    // Type conversion for accurate sorting
+                    if (key === 'timestamp' || key === 'totalAmount' || key === 'amount') {
+                        valA = Number(valA);
+                        valB = Number(valB);
+                    } else if (typeof valA === 'string') {
+                        valA = valA.toLowerCase();
+                        valB = valB.toLowerCase();
+                    }
+
+                    let comparison = 0;
+                    if (valA > valB) {
+                        comparison = 1;
+                    } else if (valA < valB) {
+                        comparison = -1;
+                    }
+
+                    return direction === 'asc' ? comparison : comparison * -1;
+                });
+            };
+            
+            const setupTableSorting = (headerId, stateKey, updateFunction) => {
+                 document.querySelectorAll(`#${headerId} .sortable`).forEach(header => {
+                    header.onclick = () => {
+                        const key = header.dataset.sortKey;
+                        let sortState = state[stateKey];
+
+                        // Determine new direction
+                        let newDirection = 'desc';
+                        if (sortState.key === key) {
+                            newDirection = sortState.direction === 'desc' ? 'asc' : 'desc';
+                        }
+
+                        // Update state
+                        state[stateKey] = { key, direction: newDirection };
+                        updateFunction(); // Calls updateStats to re-render sorted data
+                    };
+                });
+            };
 
             const renderSalesLog = (filteredSales) => {
                 const tbody = $('sales-log-body');
                 tbody.innerHTML = '';
+                
+                // Apply sorting
+                const sortedSales = sortData([...filteredSales], state.salesSort.key, state.salesSort.direction);
 
                 // Create a quick lookup map for inventory items to ensure fast and correct lookup
                 const inventoryMap = inventory.reduce((map, item) => {
@@ -1097,15 +1195,15 @@
                     return map;
                 }, {});
 
-                const sortedSales = [...filteredSales].sort((a, b) => b.timestamp - a.timestamp);
+                let totalSalesAmount = 0;
 
                 sortedSales.forEach(sale => {
                     const date = new Date(sale.timestamp).toLocaleString();
+                    totalSalesAmount += sale.totalAmount;
                     
-                    // FIX: Use the created inventoryMap for item lookup
                     const itemsList = sale.itemsSold.map(item => {
                         const inventoriedItem = inventoryMap[item.itemId];
-                        return `${item.quantity}x (${inventoriedItem?.name || 'Unknown Item'})`; // Changed fallback for clarity
+                        return `${item.quantity}x (${inventoriedItem?.name || 'Unknown Item'})`; 
                     }).join(', ');
 
                     const row = tbody.insertRow();
@@ -1115,17 +1213,41 @@
                         <td class="px-6 py-4 whitespace-nowrap text-secondary font-bold">${formatCurrency(sale.totalAmount)}</td>
                     `;
                 });
+                
+                // --- Totals Row (Footer) ---
+                const tfoot = $('sales-log-footer');
+                tfoot.innerHTML = `
+                    <tr>
+                        <td class="px-6 py-3 whitespace-nowrap" colspan="2">TOTAL SALES AMOUNT</td>
+                        <td class="px-6 py-3 whitespace-nowrap text-secondary font-extrabold">${formatCurrency(totalSalesAmount)}</td>
+                    </tr>
+                `;
+
+                // --- Set Sort Indicators ---
+                document.querySelectorAll('#sales-log-header .sortable').forEach(h => {
+                    h.classList.remove('sort-active');
+                    h.querySelector('.sort-icon').textContent = ''; // Clear icon
+
+                    if (h.dataset.sortKey === state.salesSort.key) {
+                        h.classList.add('sort-active');
+                        // Unicode: ▲ (up/asc), ▼ (down/desc)
+                        h.querySelector('.sort-icon').textContent = state.salesSort.direction === 'asc' ? ' \u25B2' : ' \u25BC';
+                    }
+                });
             };
             
-            // NEW: Function to render the Expenses Log
             const renderExpensesLog = (filteredExpenses) => {
                 const tbody = $('expenses-log-body');
                 tbody.innerHTML = '';
+                
+                // Apply sorting
+                const sortedExpenses = sortData([...filteredExpenses], state.expenseSort.key, state.expenseSort.direction);
 
-                const sortedExpenses = [...filteredExpenses].sort((a, b) => b.timestamp - a.timestamp);
+                let totalExpenseAmount = 0;
 
                 sortedExpenses.forEach(expense => {
                     const date = new Date(expense.timestamp).toLocaleString();
+                    totalExpenseAmount += expense.amount;
                     
                     const row = tbody.insertRow();
                     row.innerHTML = `
@@ -1140,12 +1262,33 @@
                     `;
                 });
                 
-                // Add listeners to new buttons
-                document.querySelectorAll('.edit-expense-btn').forEach(button => {
+                // Reattach Edit/Delete listeners (necessary since tbody was cleared)
+                document.querySelectorAll('#expenses-log-body .edit-expense-btn').forEach(button => {
                     button.onclick = () => editExpense(button.dataset.expenseId);
                 });
-                document.querySelectorAll('.delete-expense-btn').forEach(button => {
+                document.querySelectorAll('#expenses-log-body .delete-expense-btn').forEach(button => {
                     button.onclick = () => deleteExpense(button.dataset.expenseId);
+                });
+
+                // --- Totals Row (Footer) ---
+                const tfoot = $('expenses-log-footer');
+                tfoot.innerHTML = `
+                    <tr>
+                        <td class="px-6 py-3 whitespace-nowrap" colspan="3">TOTAL EXPENSES AMOUNT</td>
+                        <td class="px-6 py-3 whitespace-nowrap text-right text-danger font-extrabold">${formatCurrency(totalExpenseAmount)}</td>
+                        <td class="px-6 py-3 whitespace-nowrap"></td>
+                    </tr>
+                `;
+
+                // --- Set Sort Indicators ---
+                document.querySelectorAll('#expenses-log-header .sortable').forEach(h => {
+                    h.classList.remove('sort-active');
+                    h.querySelector('.sort-icon').textContent = ''; // Clear icon
+
+                    if (h.dataset.sortKey === state.expenseSort.key) {
+                        h.classList.add('sort-active');
+                        h.querySelector('.sort-icon').textContent = state.expenseSort.direction === 'asc' ? ' \u25B2' : ' \u25BC';
+                    }
                 });
             };
 
@@ -1246,7 +1389,104 @@
                                 beginAtZero: false, 
                                 title: {
                                     display: true,
-                                    text: 'Amount (USD)'
+                                    text: 'Amount (XCD)' // Updated chart axis title
+                                }
+                            }
+                        }
+                    }
+                });
+            };
+
+            // NEW: Expense Pie Chart Logic
+            
+            const aggregateExpensesByCategory = (expenses) => {
+                const aggregation = {};
+                let total = 0;
+
+                expenses.forEach(expense => {
+                    const category = expense.category || 'Uncategorized';
+                    const amount = expense.amount;
+                    
+                    if (!aggregation[category]) {
+                        aggregation[category] = 0;
+                    }
+                    aggregation[category] += amount;
+                    total += amount;
+                });
+
+                const labels = Object.keys(aggregation);
+                const data = labels.map(label => aggregation[label]);
+                
+                return { labels, data, total };
+            };
+
+            const renderExpensePieChart = (filteredExpenses, period) => {
+                const chartData = aggregateExpensesByCategory(filteredExpenses);
+                const ctx = $('expense-pie-chart').getContext('2d');
+
+                if (expenseChartInstance) {
+                    expenseChartInstance.destroy();
+                }
+                
+                // Only render if there are expenses to display
+                if (chartData.total === 0) {
+                    ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+                    return;
+                }
+
+                // Standard colors for consistency and visibility
+                const backgroundColors = [
+                    '#ef4444', // Danger (Red)
+                    '#4f46e5', // Primary (Indigo)
+                    '#10b981', // Secondary (Emerald)
+                    '#f97316', // Orange
+                    '#06b6d4', // Cyan
+                    '#8b5cf6', // Violet
+                    '#f59e0b', // Amber
+                    '#6b7280', // Gray
+                ];
+
+                expenseChartInstance = new Chart(ctx, {
+                    type: 'doughnut', // Using doughnut is a nice visual touch
+                    data: {
+                        labels: chartData.labels,
+                        datasets: [{
+                            data: chartData.data,
+                            backgroundColor: backgroundColors.slice(0, chartData.labels.length),
+                            hoverOffset: 8
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: {
+                                position: 'right', // Place legend on the side
+                                labels: {
+                                    // Add percentage to legend labels
+                                    generateLabels: (chart) => {
+                                        const data = chart.data.datasets[0].data;
+                                        return chart.data.labels.map((label, i) => {
+                                            const total = data.reduce((sum, value) => sum + value, 0);
+                                            const percentage = total > 0 ? ((data[i] / total) * 100).toFixed(1) : '0.0';
+                                            return {
+                                                text: `${label}: ${percentage}% (${formatCurrency(data[i])})`,
+                                                fillStyle: chart.data.datasets[0].backgroundColor[i],
+                                                strokeStyle: chart.data.datasets[0].backgroundColor[i],
+                                                lineWidth: 0,
+                                                hidden: chart.getDatasetMeta(0).data[i].hidden,
+                                                index: i,
+                                            };
+                                        });
+                                    }
+                                }
+                            },
+                            title: {
+                                display: true,
+                                text: `Total Expenses: ${formatCurrency(chartData.total)}`,
+                                font: {
+                                    size: 14,
+                                    weight: 'bold'
                                 }
                             }
                         }
@@ -1288,6 +1528,11 @@
                     const sales = $('stat-sales').textContent;
                     const expenses = $('stat-expenses').textContent;
                     const profit = $('stat-profit').textContent;
+                    
+                    // Simplified currency extraction: rely on the UI content being correctly formatted by formatCurrency
+                    const totalSalesAmount = sales || formatCurrency(0); 
+                    const totalExpenseAmount = expenses || formatCurrency(0);
+
 
                     doc.setFontSize(10);
                     doc.text(`Total Sales: ${sales}`, margin, yPos);
@@ -1297,22 +1542,37 @@
                     doc.text(`Net Profit: ${profit}`, margin, yPos);
                     yPos += 10;
 
-                    // --- 3. Chart Capture ---
+                    // --- 3. Chart Capture (Profit Trend) ---
                     doc.setFontSize(12);
                     doc.text("Profit Trend Chart", margin, yPos);
                     yPos += 5;
 
-                    const canvas = $('profit-chart');
-                    const canvasImg = canvas.toDataURL('image/png', 1.0);
+                    const profitCanvas = $('profit-chart');
+                    const profitCanvasImg = profitCanvas.toDataURL('image/png', 1.0);
                     
-                    // Calculate aspect ratio for image scaling
-                    const imgWidth = 180; // 180mm wide (fits within 210mm page width with 10mm margins)
-                    const imgHeight = (canvas.height * imgWidth) / canvas.width;
+                    let imgWidth = 180; 
+                    let imgHeight = (profitCanvas.height * imgWidth) / profitCanvas.width;
                     
-                    doc.addImage(canvasImg, 'PNG', margin, yPos, imgWidth, imgHeight);
+                    doc.addImage(profitCanvasImg, 'PNG', margin, yPos, imgWidth, imgHeight);
+                    yPos += imgHeight + 10;
+                    
+                    // --- 4. Chart Capture (Expenses Breakdown) ---
+                    doc.setFontSize(12);
+                    doc.text("Expenses Breakdown by Category", margin, yPos);
+                    yPos += 5;
+
+                    const expenseCanvas = $('expense-pie-chart');
+                    const expenseCanvasImg = expenseCanvas.toDataURL('image/png', 1.0);
+                    
+                    // Use a smaller image size for the doughnut chart
+                    imgWidth = 100; // Smaller width
+                    imgHeight = (expenseCanvas.height * imgWidth) / expenseCanvas.width;
+                    
+                    doc.addImage(expenseCanvasImg, 'PNG', margin, yPos, imgWidth, imgHeight);
                     yPos += imgHeight + 10;
 
-                    // --- 4. Raw Tables (Sales Log) ---
+
+                    // --- 5. Raw Tables (Sales Log) ---
                     doc.setFontSize(12);
                     doc.text("Sales Log (Raw Data)", margin, yPos);
                     yPos += 5;
@@ -1323,26 +1583,34 @@
                     
                     document.querySelectorAll('#sales-log-body tr').forEach(row => {
                         const rowData = Array.from(row.cells).map(cell => cell.textContent.trim());
-                        // Exclude the 'Actions' column if it was ever added to the sales log
                         salesTableData.push(rowData.slice(0, 3)); 
                     });
                     
+                    // Add Sales Totals Row
+                    salesTableData.push(['TOTAL SALES AMOUNT', '', totalSalesAmount]);
+
                     doc.autoTable({
                         startY: yPos,
                         head: [salesTableData[0]],
-                        body: salesTableData.slice(1),
+                        body: salesTableData.slice(1, -1), // All rows except the last one (total)
+                        foot: [salesTableData.slice(-1)[0]], // Only the last row (total)
                         styles: { fontSize: 8, cellPadding: 2, lineWidth: 0.1 },
+                        footStyles: { fillColor: [230, 230, 230], textColor: [0, 0, 0], fontStyle: 'bold' },
+                        columnStyles: {
+                            0: { cellWidth: 30 }, 
+                            1: { cellWidth: 120 }, 
+                            2: { cellWidth: 30 }
+                        },
                         margin: { left: margin, right: margin }
                     });
                     yPos = doc.autoTable.previous.finalY + 10;
                     
-                    // --- 5. Raw Tables (Expenses Log) ---
+                    // --- 6. Raw Tables (Expenses Log) ---
                     doc.setFontSize(12);
                     doc.text("Expenses Log (Raw Data)", margin, yPos);
                     yPos += 5;
 
                     const expenseTableData = [];
-                    // Note: Expense table header has 5 columns including Actions, we only want 4 for the data.
                     const expenseHeader = ['Date', 'Description', 'Category', 'Amount'];
                     expenseTableData.push(expenseHeader);
 
@@ -1352,15 +1620,26 @@
                         expenseTableData.push(rowData.slice(0, 4)); 
                     });
                     
+                    // Add Expense Totals Row
+                    expenseTableData.push(['TOTAL EXPENSES AMOUNT', '', '', totalExpenseAmount]);
+
                     doc.autoTable({
                         startY: yPos,
                         head: [expenseTableData[0]],
-                        body: expenseTableData.slice(1),
+                        body: expenseTableData.slice(1, -1), // All rows except the last one (total)
+                        foot: [expenseTableData.slice(-1)[0]], // Only the last row (total)
                         styles: { fontSize: 8, cellPadding: 2, lineWidth: 0.1 },
+                        footStyles: { fillColor: [230, 230, 230], textColor: [0, 0, 0], fontStyle: 'bold' },
+                        columnStyles: {
+                            0: { cellWidth: 30 }, 
+                            1: { cellWidth: 60 }, 
+                            2: { cellWidth: 60 },
+                            3: { cellWidth: 30 }
+                        },
                         margin: { left: margin, right: margin }
                     });
                     
-                    // --- 6. Save File ---
+                    // --- 7. Save File ---
                     const filename = `P&L_Report_${period}_${refDate.replace(/\//g, '-')}.pdf`;
                     doc.save(filename);
                     
