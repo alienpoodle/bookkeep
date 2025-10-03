@@ -14,6 +14,9 @@
     <!-- FIX: Added jsPDF AutoTable Plugin CDN -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
     
+    <!-- Font Awesome CDN for Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" xintegrity="sha512-SnH5WK+bZxgPHs44uWIX+LLMDJ8uR4/k1q3oTx+5K+Y/M6hY/FpB/KzC3d6e5Z9zB+k5p1S1U2H+2Q==" crossorigin="anonymous" referrerpolicy="no-referrer" />
+
     <!-- Font Inter -->
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap');
@@ -76,10 +79,22 @@
                     <span class="text-xl font-bold text-white tracking-wider">BookKeep Pro</span>
                 </div>
                 <nav class="flex space-x-2 sm:space-x-4">
-                    <button class="nav-button p-2 rounded-lg text-white font-medium bg-primary hover:bg-indigo-600 transition duration-150" data-view="sales">Cash Register</button>
-                    <button class="nav-button p-2 rounded-lg text-white font-medium bg-primary hover:bg-indigo-600 transition duration-150" data-view="inventory">Inventory</button>
-                    <button class="nav-button p-2 rounded-lg text-white font-medium bg-primary hover:bg-indigo-600 transition duration-150" data-view="expenses">Expenses</button>
-                    <button class="nav-button p-2 rounded-lg text-white font-medium bg-primary hover:bg-indigo-600 transition duration-150" data-view="stats">P&L Reports</button>
+                    <button class="nav-button flex items-center space-x-2 p-2 rounded-lg text-white font-medium bg-primary hover:bg-indigo-600 transition duration-150" data-view="sales">
+                        <i class="fa-solid fa-cash-register"></i>
+                        <span class="hidden sm:inline">Register</span>
+                    </button>
+                    <button class="nav-button flex items-center space-x-2 p-2 rounded-lg text-white font-medium bg-primary hover:bg-indigo-600 transition duration-150" data-view="inventory">
+                        <i class="fa-solid fa-boxes-stacked"></i>
+                        <span class="hidden sm:inline">Inventory</span>
+                    </button>
+                    <button class="nav-button flex items-center space-x-2 p-2 rounded-lg text-white font-medium bg-primary hover:bg-indigo-600 transition duration-150" data-view="expenses">
+                        <i class="fa-solid fa-file-invoice-dollar"></i>
+                        <span class="hidden sm:inline">Expenses</span>
+                    </button>
+                    <button class="nav-button flex items-center space-x-2 p-2 rounded-lg text-white font-medium bg-primary hover:bg-indigo-600 transition duration-150" data-view="stats">
+                        <i class="fa-solid fa-chart-line"></i>
+                        <span class="hidden sm:inline">Reports</span>
+                    </button>
                 </nav>
             </div>
         </div>
@@ -490,7 +505,8 @@
                         showMessage(`Error updating item: ${error.name}`, 'error');
                         return false;
                     }
-                },
+                }
+                ,
 
                 async getAll(storeName) {
                     let results = [];
@@ -1662,6 +1678,14 @@
                     view.classList.remove('active-view');
                 });
                 const targetView = $(`${newView}-view`);
+                
+                // FIX: Check if targetView exists before trying to access its classList
+                if (!targetView) {
+                    console.error(`Attempted to switch to view: ${newView}, but element ${newView}-view was not found.`);
+                    showMessage(`Error switching view: ${newView} not found.`, 'error');
+                    return; 
+                }
+
                 // FIX: Ensure the 'hidden' class is removed before attempting to use the view.
                 targetView.classList.remove('hidden'); 
                 targetView.classList.add('active-view');
@@ -1681,8 +1705,11 @@
 
             document.querySelectorAll('.nav-button').forEach(button => {
                 button.addEventListener('click', (e) => {
+                    // FIX: Use e.currentTarget to get the data-view attribute from the BUTTON element, not the clicked icon or span child.
+                    const viewName = e.currentTarget.dataset.view; 
+                    
                     // Call switchView asynchronously to ensure data loading completes before the view is fully rendered/interacted with
-                    switchView(e.target.dataset.view).catch(err => {
+                    switchView(viewName).catch(err => {
                         console.error("Error switching view:", err);
                         showMessage("Failed to load data for the view. See console.", 'error');
                     });
