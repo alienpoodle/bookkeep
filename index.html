@@ -8,6 +8,12 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- Chart.js CDN -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+    <!-- PDF Generation Libraries -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <!-- FIX: Added jsPDF AutoTable Plugin CDN -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
+    
     <!-- Font Inter -->
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap');
@@ -240,11 +246,15 @@
                     <button id="stats-nav-next" class="p-3 bg-gray-200 text-gray-700 font-semibold rounded-lg hover:bg-gray-300 transition duration-150 flex-1">
                         Next Period &rarr;
                     </button>
+                    <!-- NEW EXPORT BUTTON -->
+                    <button id="export-report-btn" class="p-3 bg-primary text-white font-semibold rounded-lg hover:bg-indigo-600 transition duration-150 flex-1">
+                        Export Report (PDF)
+                    </button>
                 </div>
             </div>
 
             <!-- Summary Cards -->
-            <div class="grid grid-cols-3 gap-4 mb-8">
+            <div id="summary-cards" class="grid grid-cols-3 gap-4 mb-8">
                 <div class="bg-card-bg p-4 rounded-xl shadow-md text-center border-b-4 border-primary">
                     <p class="text-sm text-gray-500">Total Sales</p>
                     <p id="stat-sales" class="text-2xl font-bold text-primary">$0.00</p>
@@ -280,7 +290,7 @@
 
             <div id="tables-tab" class="tab-content hidden">
                 <!-- Sales Log Table -->
-                <div class="bg-card-bg p-6 rounded-xl shadow-lg overflow-x-auto mb-8">
+                <div id="sales-log-container" class="bg-card-bg p-6 rounded-xl shadow-lg overflow-x-auto mb-8">
                     <h2 class="text-xl font-semibold mb-4 text-primary">Recent Sales Log</h2>
                     <table class="min-w-full divide-y divide-gray-200">
                         <thead class="bg-gray-50">
@@ -297,7 +307,7 @@
                 </div>
 
                 <!-- Expenses Log Table -->
-                <div class="bg-card-bg p-6 rounded-xl shadow-lg overflow-x-auto">
+                <div id="expenses-log-container" class="bg-card-bg p-6 rounded-xl shadow-lg overflow-x-auto">
                     <h2 class="text-xl font-semibold mb-4 text-danger">Recent Expenses Log</h2>
                     <table class="min-w-full divide-y divide-gray-200">
                         <thead class="bg-gray-50">
@@ -320,6 +330,9 @@
     </main>
 
     <script>
+        // Ensure jspdf is available globally (necessary because it's loaded via CDN)
+        const { jsPDF } = window.jspdf;
+
         document.addEventListener('DOMContentLoaded', () => {
             // --- Helper Functions and UI Management ---
 
@@ -952,6 +965,8 @@
                 document.querySelectorAll('.tab-button').forEach(button => {
                     button.onclick = (e) => switchStatsTab(e.target.dataset.tab);
                 });
+                
+                $('export-report-btn').onclick = exportReportToPDF;
             };
 
             const navigatePeriod = (direction) => {
@@ -1031,25 +1046,43 @@
                     return data;
                 }
                 
-                // Set the end of the period to the end of the reference day
-                const endOfPeriod = new Date(referenceTimestamp);
-                endOfPeriod.setHours(23, 59, 59, 999);
+                const refDate = new Date(referenceTimestamp);
                 
-                let startOfPeriod = new Date(endOfPeriod);
-                startOfPeriod.setHours(0, 0, 0, 0);
+                let startOfPeriod = new Date(refDate);
+                let endOfPeriod = new Date(refDate);
 
                 if (period === 'daily') {
-                    startOfPeriod = new Date(endOfPeriod);
                     startOfPeriod.setHours(0, 0, 0, 0);
+                    endOfPeriod.setHours(23, 59, 59, 999);
                 } else if (period === 'weekly') {
-                    startOfPeriod = addDays(startOfPeriod, -6); // 7 days total including the end day
+                    // Set start to Sunday (0) of the reference week
+                    const dayOfWeek = refDate.getDay(); 
+                    startOfPeriod = addDays(startOfPeriod, -dayOfWeek); 
+                    startOfPeriod.setHours(0, 0, 0, 0);
+                    
+                    // Set end to Saturday (6) of the reference week
+                    endOfPeriod = addDays(startOfPeriod, 6);
+                    endOfPeriod.setHours(23, 59, 59, 999);
+
                 } else if (period === 'monthly') {
-                    startOfPeriod = addMonths(startOfPeriod, -1);
-                    startOfPeriod.setDate(startOfPeriod.getDate() + 1);
+                    // Set start to the 1st day of the reference month
+                    startOfPeriod.setDate(1);
+                    startOfPeriod.setHours(0, 0, 0, 0);
+                    
+                    // Set end to the last day of the reference month
+                    endOfPeriod = new Date(startOfPeriod);
+                    endOfPeriod.setMonth(endOfPeriod.getMonth() + 1);
+                    endOfPeriod.setDate(0); // Rolls back to the last day of the current month
+                    endOfPeriod.setHours(23, 59, 59, 999);
                 }
 
+                // Respect the user's reference date as the maximum boundary for the report
+                const requestedEndBoundary = new Date(referenceTimestamp);
+                requestedEndBoundary.setHours(23, 59, 59, 999);
+
                 const startTime = startOfPeriod.getTime();
-                const endTime = endOfPeriod.getTime();
+                // Use the earlier of the calculated end of the period or the user's requested end date
+                const endTime = Math.min(endOfPeriod.getTime(), requestedEndBoundary.getTime());
                 
                 return data.filter(item => item.timestamp >= startTime && item.timestamp <= endTime);
             };
@@ -1220,7 +1253,128 @@
                     }
                 });
             };
+            
+            // --- PDF Export Logic ---
+            const exportReportToPDF = async () => {
+                const btn = $('export-report-btn');
+                btn.disabled = true;
+                btn.textContent = 'Generating...';
+                showMessage('Generating PDF report...', 'info');
 
+                try {
+                    const period = $('stats-period').value;
+                    const refDate = new Date(state.statsRefDate).toLocaleDateString();
+                    const title = `P&L Report: ${period.toUpperCase()} ending ${refDate}`;
+                    
+                    const doc = new jsPDF('p', 'mm', 'a4');
+                    let yPos = 10;
+                    const pageWidth = doc.internal.pageSize.getWidth();
+                    const margin = 10;
+                    const maxLineWidth = pageWidth - 2 * margin;
+
+                    // --- 1. Report Title and Metadata ---
+                    doc.setFontSize(16);
+                    doc.text("Food Truck BookKeep Pro", margin, yPos);
+                    yPos += 7;
+                    doc.setFontSize(12);
+                    doc.text(title, margin, yPos);
+                    yPos += 15;
+
+                    // --- 2. Summary Cards (Text Breakdown) ---
+                    doc.setFontSize(12);
+                    doc.text("Financial Summary", margin, yPos);
+                    yPos += 5;
+                    
+                    const sales = $('stat-sales').textContent;
+                    const expenses = $('stat-expenses').textContent;
+                    const profit = $('stat-profit').textContent;
+
+                    doc.setFontSize(10);
+                    doc.text(`Total Sales: ${sales}`, margin, yPos);
+                    yPos += 5;
+                    doc.text(`Total Expenses: ${expenses}`, margin, yPos);
+                    yPos += 5;
+                    doc.text(`Net Profit: ${profit}`, margin, yPos);
+                    yPos += 10;
+
+                    // --- 3. Chart Capture ---
+                    doc.setFontSize(12);
+                    doc.text("Profit Trend Chart", margin, yPos);
+                    yPos += 5;
+
+                    const canvas = $('profit-chart');
+                    const canvasImg = canvas.toDataURL('image/png', 1.0);
+                    
+                    // Calculate aspect ratio for image scaling
+                    const imgWidth = 180; // 180mm wide (fits within 210mm page width with 10mm margins)
+                    const imgHeight = (canvas.height * imgWidth) / canvas.width;
+                    
+                    doc.addImage(canvasImg, 'PNG', margin, yPos, imgWidth, imgHeight);
+                    yPos += imgHeight + 10;
+
+                    // --- 4. Raw Tables (Sales Log) ---
+                    doc.setFontSize(12);
+                    doc.text("Sales Log (Raw Data)", margin, yPos);
+                    yPos += 5;
+                    
+                    const salesTableData = [];
+                    const salesHeader = ['Date', 'Items Sold', 'Total Amount'];
+                    salesTableData.push(salesHeader);
+                    
+                    document.querySelectorAll('#sales-log-body tr').forEach(row => {
+                        const rowData = Array.from(row.cells).map(cell => cell.textContent.trim());
+                        // Exclude the 'Actions' column if it was ever added to the sales log
+                        salesTableData.push(rowData.slice(0, 3)); 
+                    });
+                    
+                    doc.autoTable({
+                        startY: yPos,
+                        head: [salesTableData[0]],
+                        body: salesTableData.slice(1),
+                        styles: { fontSize: 8, cellPadding: 2, lineWidth: 0.1 },
+                        margin: { left: margin, right: margin }
+                    });
+                    yPos = doc.autoTable.previous.finalY + 10;
+                    
+                    // --- 5. Raw Tables (Expenses Log) ---
+                    doc.setFontSize(12);
+                    doc.text("Expenses Log (Raw Data)", margin, yPos);
+                    yPos += 5;
+
+                    const expenseTableData = [];
+                    // Note: Expense table header has 5 columns including Actions, we only want 4 for the data.
+                    const expenseHeader = ['Date', 'Description', 'Category', 'Amount'];
+                    expenseTableData.push(expenseHeader);
+
+                    document.querySelectorAll('#expenses-log-body tr').forEach(row => {
+                        const rowData = Array.from(row.cells).map(cell => cell.textContent.trim());
+                        // Only take the first 4 columns (Date, Description, Category, Amount)
+                        expenseTableData.push(rowData.slice(0, 4)); 
+                    });
+                    
+                    doc.autoTable({
+                        startY: yPos,
+                        head: [expenseTableData[0]],
+                        body: expenseTableData.slice(1),
+                        styles: { fontSize: 8, cellPadding: 2, lineWidth: 0.1 },
+                        margin: { left: margin, right: margin }
+                    });
+                    
+                    // --- 6. Save File ---
+                    const filename = `P&L_Report_${period}_${refDate.replace(/\//g, '-')}.pdf`;
+                    doc.save(filename);
+                    
+                    showMessage('PDF generated successfully!', 'success');
+
+                } catch (error) {
+                    console.error("PDF Generation Error:", error);
+                    showMessage('Error generating PDF. See console for details.', 'error');
+                } finally {
+                    btn.disabled = false;
+                    btn.textContent = 'Export Report (PDF)';
+                }
+            };
+            
             // --- View Switching ---
 
             const switchView = async (newView) => { // CHANGED to async
