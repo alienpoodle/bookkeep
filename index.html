@@ -95,6 +95,11 @@
                         <i class="fa-solid fa-chart-line"></i>
                         <span class="hidden sm:inline">Reports</span>
                     </button>
+                    <!-- NEW: Settings Button -->
+                    <button class="nav-button flex items-center space-x-2 p-2 rounded-lg text-white font-medium bg-primary hover:bg-indigo-600 transition duration-150" data-view="settings">
+                        <i class="fa-solid fa-gear"></i>
+                        <span class="hidden sm:inline">Settings</span>
+                    </button>
                 </nav>
             </div>
         </div>
@@ -290,7 +295,7 @@
                                     <i class="fa-solid fa-file-pdf mr-2 text-danger"></i> Export PDF
                                 </button>
                                 <button id="export-csv-btn" class="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">
-                                    <i class="fa-solid fa-file-csv mr-2 text-secondary"></i> Export CSV
+                                    <i class="fa-solid fa-file-csv mr-2 text-secondary"></i> Export CSV (P&L)
                                 </button>
                             </div>
                         </div>
@@ -388,6 +393,59 @@
                     </table>
                 </div>
             </div>
+        </div>
+        
+        <!-- 5. Settings View (NEW) -->
+        <div id="settings-view" class="hidden flex flex-col gap-8">
+            <h1 class="text-3xl font-extrabold mb-4 text-primary">Data Management & Settings</h1>
+
+            <!-- Export Individual Data Section -->
+            <div class="bg-card-bg p-6 rounded-xl shadow-lg">
+                <h2 class="text-2xl font-semibold mb-4 text-primary border-b pb-2">Export Individual Data (CSV)</h2>
+                <p class="text-gray-600 mb-6">Download your raw data records for external backup or analysis.</p>
+
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <button class="export-individual-btn p-3 bg-primary text-white font-semibold rounded-lg hover:bg-indigo-600 transition duration-150 flex items-center justify-center space-x-2" data-store="inventory">
+                        <i class="fa-solid fa-boxes-stacked"></i> <span>Export Inventory</span>
+                    </button>
+                    <button class="export-individual-btn p-3 bg-primary text-white font-semibold rounded-lg hover:bg-indigo-600 transition duration-150 flex items-center justify-center space-x-2" data-store="sales">
+                        <i class="fa-solid fa-cash-register"></i> <span>Export Sales</span>
+                    </button>
+                    <button class="export-individual-btn p-3 bg-primary text-white font-semibold rounded-lg hover:bg-indigo-600 transition duration-150 flex items-center justify-center space-x-2" data-store="expenses">
+                        <i class="fa-solid fa-file-invoice-dollar"></i> <span>Export Expenses</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Import Data Section -->
+            <div class="bg-card-bg p-6 rounded-xl shadow-lg">
+                <h2 class="text-2xl font-semibold mb-4 text-danger border-b pb-2">Import Data (CSV)</h2>
+                <p class="text-gray-600 mb-6">Upload CSV files to restore or update your data records. **Warning: This operation will overwrite existing entries with matching IDs.**</p>
+
+                <div class="space-y-6">
+                    <!-- Inventory Import -->
+                    <div class="border p-4 rounded-lg">
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Import Inventory Data (.csv)</label>
+                        <input type="file" id="import-inventory-file" accept=".csv" class="w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-secondary/10 file:text-secondary hover:file:bg-secondary/20">
+                        <button data-store="inventory" class="import-data-btn mt-3 p-2 bg-secondary text-white font-semibold rounded-lg hover:bg-emerald-600 transition duration-150 w-full" disabled>Import Inventory</button>
+                    </div>
+
+                    <!-- Sales Import -->
+                    <div class="border p-4 rounded-lg">
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Import Sales Data (.csv)</label>
+                        <input type="file" id="import-sales-file" accept=".csv" class="w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-secondary/10 file:text-secondary hover:file:bg-secondary/20">
+                        <button data-store="sales" class="import-data-btn mt-3 p-2 bg-secondary text-white font-semibold rounded-lg hover:bg-emerald-600 transition duration-150 w-full" disabled>Import Sales</button>
+                    </div>
+
+                    <!-- Expenses Import -->
+                    <div class="border p-4 rounded-lg">
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Import Expenses Data (.csv)</label>
+                        <input type="file" id="import-expenses-file" accept=".csv" class="w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-secondary/10 file:text-secondary hover:file:bg-secondary/20">
+                        <button data-store="expenses" class="import-data-btn mt-3 p-2 bg-secondary text-white font-semibold rounded-lg hover:bg-emerald-600 transition duration-150 w-full" disabled>Import Expenses</button>
+                    </div>
+                </div>
+            </div>
+
         </div>
 
     </main>
@@ -1049,7 +1107,7 @@
                 };
                 $('export-csv-btn').onclick = () => {
                     toggleExportDropdown();
-                    exportReportToCSV(); // NEW CSV Export Handler
+                    exportReportToCSV(); // P&L CSV Export Handler
                 };
 
 
@@ -1551,86 +1609,194 @@
                 });
             };
 
-            // NEW: Export to CSV Logic
-            const exportReportToCSV = () => {
-                const period = $('stats-period').value;
-                const refDate = new Date(state.statsRefDate).toLocaleDateString();
-                const filename = `Report_${period}_${refDate.replace(/\//g, '-')}.csv`;
+            // --- CSV Export/Import Definitions and Logic ---
 
-                const salesHeader = ['Type', 'Timestamp', 'Date_Time', 'Total_Amount', 'Items_Sold'];
-                const expensesHeader = ['Type', 'Timestamp', 'Date_Time', 'Amount', 'Description', 'Category'];
-
-                let csvContent = "data:text/csv;charset=utf-8,";
-                
-                // --- Sales Data ---
-                csvContent += '*** SALES LOG ***\n';
-                csvContent += salesHeader.join(',') + '\n';
-
-                const inventoryMap = inventory.reduce((map, item) => {
-                    map[item.itemId] = item;
-                    return map;
-                }, {});
-
-                const sortedSales = sortData([...filteredSalesData], 'timestamp', 'desc');
-
-                sortedSales.forEach(sale => {
-                    const dateTime = new Date(sale.timestamp).toLocaleString();
-                    const items = sale.itemsSold.map(item => {
-                        const name = inventoryMap[item.itemId]?.name || 'Unknown';
-                        return `${item.quantity}x ${name} @${item.priceAtSale}`;
-                    }).join(' | ');
-
-                    const row = [
-                        'SALE',
-                        sale.timestamp,
-                        `"${dateTime}"`,
-                        sale.totalAmount.toFixed(2),
-                        `"${items}"`
-                    ];
-                    csvContent += row.join(',') + '\n';
-                });
-                
-                // --- Sales Totals ---
-                const totalSalesAmount = filteredSalesData.reduce((sum, sale) => sum + sale.totalAmount, 0);
-                csvContent += `\nTOTAL SALES AMOUNT,,-,${totalSalesAmount.toFixed(2)},-\n`;
-
-
-                // --- Expenses Data ---
-                csvContent += '\n*** EXPENSES LOG ***\n';
-                csvContent += expensesHeader.join(',') + '\n';
-
-                const sortedExpenses = sortData([...filteredExpensesData], 'timestamp', 'desc');
-
-                sortedExpenses.forEach(expense => {
-                    const dateTime = new Date(expense.timestamp).toLocaleString();
-                    const row = [
-                        'EXPENSE',
-                        expense.timestamp,
-                        `"${dateTime}"`,
-                        expense.amount.toFixed(2),
-                        `"${expense.description}"`,
-                        `"${expense.category}"`
-                    ];
-                    csvContent += row.join(',') + '\n';
-                });
-
-                // --- Expenses Totals ---
-                const totalExpenseAmount = filteredExpensesData.reduce((sum, expense) => sum + expense.amount, 0);
-                csvContent += `\nTOTAL EXPENSES AMOUNT,,-,${totalExpenseAmount.toFixed(2)},-,-\n`;
-
-                // --- Trigger Download ---
-                const encodedUri = encodeURI(csvContent);
+            const CSV_MAPS = {
+                // Defines the expected CSV header and the corresponding data property for each store
+                inventory: {
+                    headers: ['itemId', 'name', 'sellingPrice', 'stockQuantity', 'unitOfMeasure'],
+                    key: 'itemId',
+                    dataType: { sellingPrice: 'number', stockQuantity: 'number' }
+                },
+                sales: {
+                    headers: ['saleId', 'timestamp', 'totalAmount', 'paymentMethod', 'itemsSold_JSON'],
+                    key: 'saleId',
+                    dataType: { timestamp: 'number', totalAmount: 'number' },
+                    // Sales itemsSold must be stringified/parsed as JSON for a single CSV field
+                    transform: (item) => ({
+                        ...item,
+                        itemsSold_JSON: JSON.stringify(item.itemsSold)
+                    }),
+                    reverseTransform: (item) => ({
+                        ...item,
+                        itemsSold: JSON.parse(item.itemsSold_JSON)
+                    })
+                },
+                expenses: {
+                    headers: ['expenseId', 'timestamp', 'amount', 'description', 'category'],
+                    key: 'expenseId',
+                    dataType: { expenseId: 'number', timestamp: 'number', amount: 'number' }
+                }
+            };
+            
+            const downloadCSV = (content, filename) => {
+                const encodedUri = encodeURI(content);
                 const link = document.createElement('a');
                 link.setAttribute('href', encodedUri);
                 link.setAttribute('download', filename);
                 document.body.appendChild(link);
                 link.click();
                 document.body.removeChild(link);
+            };
 
-                showMessage('CSV generated and downloading.', 'secondary');
+            const exportIndividualCSV = async (storeName) => {
+                const data = await DBManager.getAll(storeName);
+                const map = CSV_MAPS[storeName];
+
+                let csvContent = "data:text/csv;charset=utf-8,";
+                
+                // Add header row
+                csvContent += map.headers.join(',') + '\n';
+
+                data.forEach(item => {
+                    let rowData = {};
+                    // Apply special transforms if needed (e.g., stringifying nested arrays)
+                    const itemToExport = map.transform ? map.transform(item) : item;
+
+                    const row = map.headers.map(header => {
+                        let value = itemToExport[header];
+                        // Handle null/undefined values and quotes for CSV safety
+                        if (value === null || value === undefined) return '';
+                        // Enclose strings that might contain commas
+                        if (typeof value === 'string' && (value.includes(',') || value.includes('\n') || value.includes('"'))) {
+                            return `"${value.replace(/"/g, '""')}"`;
+                        }
+                        return value;
+                    });
+                    csvContent += row.join(',') + '\n';
+                });
+
+                const filename = `${storeName}_export_${new Date().toISOString().slice(0, 10)}.csv`;
+                downloadCSV(csvContent, filename);
+                showMessage(`${storeName.toUpperCase()} exported successfully!`, 'success');
+            };
+
+            const handleImport = (storeName) => {
+                const fileInput = $(`import-${storeName}-file`);
+                const importBtn = document.querySelector(`.import-data-btn[data-store="${storeName}"]`);
+                
+                importBtn.disabled = true;
+
+                if (fileInput.files.length === 0) {
+                    showMessage('Please select a file to import.', 'error');
+                    importBtn.disabled = false;
+                    return;
+                }
+
+                const file = fileInput.files[0];
+                const reader = new FileReader();
+
+                reader.onload = async (e) => {
+                    const text = e.target.result;
+                    try {
+                        await processCSV(storeName, text);
+                    } catch (error) {
+                        console.error(`Import Error for ${storeName}:`, error);
+                        showMessage(`Import failed for ${storeName}: ${error.message}`, 'error');
+                    }
+                    importBtn.disabled = false;
+                };
+                reader.readAsText(file);
+            };
+
+            const processCSV = async (storeName, csvText) => {
+                const map = CSV_MAPS[storeName];
+                const lines = csvText.trim().split('\n');
+                if (lines.length < 2) {
+                    throw new Error('CSV file contains no data.');
+                }
+
+                // Simple header check
+                const headers = lines[0].split(',').map(h => h.trim().replace(/"/g, ''));
+                if (headers.join(',') !== map.headers.join(',')) {
+                    throw new Error(`Invalid headers. Expected: ${map.headers.join(', ')}`);
+                }
+
+                let importedCount = 0;
+                let errorCount = 0;
+
+                for (let i = 1; i < lines.length; i++) {
+                    const values = lines[i].split(',');
+                    if (values.length !== map.headers.length) {
+                        console.warn(`Skipping row ${i+1}: Column count mismatch.`);
+                        errorCount++;
+                        continue;
+                    }
+
+                    let record = {};
+                    let isValid = true;
+
+                    // Map values to headers and apply type conversion
+                    map.headers.forEach((header, index) => {
+                        let value = values[index].trim().replace(/"/g, ''); // Basic de-quote
+                        const type = map.dataType[header];
+
+                        if (type === 'number') {
+                            value = parseFloat(value);
+                            if (isNaN(value)) {
+                                console.warn(`Skipping row ${i+1}: Invalid number for ${header}`);
+                                isValid = false;
+                            }
+                        }
+                        record[header] = value;
+                    });
+                    
+                    if (!isValid) continue;
+
+                    // Apply reverse transform if needed (e.g., parsing JSON strings back to objects)
+                    const itemToSave = map.reverseTransform ? map.reverseTransform(record) : record;
+
+                    if (itemToSave[map.key]) {
+                        // Use put for update/insert based on key
+                        await DBManager.updateItem(storeName, itemToSave);
+                        importedCount++;
+                    } else {
+                        console.warn(`Skipping row ${i+1}: Missing required key ${map.key}`);
+                        errorCount++;
+                    }
+                }
+                
+                // Reload data after successful import
+                if (storeName === STORE_INVENTORY) await loadInventory();
+                if (storeName === STORE_SALES) await loadSalesData();
+                if (storeName === STORE_EXPENSES) await loadExpenses();
+                
+                showMessage(`Import Complete. ${importedCount} records processed. ${errorCount} errors.`, importedCount > 0 ? 'success' : 'error');
             };
             
-            // --- PDF Export Logic ---
+            // --- Attach Settings View Listeners ---
+
+            const setupSettingsListeners = () => {
+                // Individual Export Buttons
+                document.querySelectorAll('.export-individual-btn').forEach(btn => {
+                    btn.onclick = () => exportIndividualCSV(btn.dataset.store);
+                });
+                
+                // Import File Change Listeners (Enables/Disables Import Button)
+                document.querySelectorAll('.import-data-btn').forEach(btn => {
+                    const storeName = btn.dataset.store;
+                    const fileInput = $(`import-${storeName}-file`);
+                    
+                    fileInput.onchange = () => {
+                        btn.disabled = fileInput.files.length === 0;
+                    };
+                    
+                    btn.onclick = () => handleImport(storeName);
+                });
+            };
+
+
+            // --- PDF Export Logic (unchanged) ---
             const exportReportToPDF = async () => {
                 const btn = $('export-dropdown-toggle');
                 btn.disabled = true;
@@ -1820,6 +1986,8 @@
                     initializeStatsControls(); // Initialize controls on first load
                     await loadSalesData(); // ADDED await
                     switchStatsTab(state.statsTab); // Ensure correct tab is active
+                } else if (newView === 'settings') {
+                    setupSettingsListeners(); // Setup listeners for import/export buttons
                 }
             };
 
