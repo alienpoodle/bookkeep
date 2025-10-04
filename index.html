@@ -278,10 +278,24 @@
                     <button id="stats-nav-next" class="p-3 bg-gray-200 text-gray-700 font-semibold rounded-lg hover:bg-gray-300 transition duration-150 flex-1">
                         Next Period &rarr;
                     </button>
-                    <!-- NEW EXPORT BUTTON -->
-                    <button id="export-report-btn" class="p-3 bg-primary text-white font-semibold rounded-lg hover:bg-indigo-600 transition duration-150 flex-1">
-                        Export Report (PDF)
-                    </button>
+                    <!-- MODIFIED: Export button changed to a dropdown container -->
+                    <div class="relative inline-block text-left flex-1" id="export-dropdown-container">
+                        <button id="export-dropdown-toggle" class="w-full p-3 bg-primary text-white font-semibold rounded-lg shadow-md hover:bg-indigo-600 transition duration-150 flex items-center justify-center space-x-2">
+                            <i class="fa-solid fa-file-export"></i>
+                            <span>Export <i class="fa-solid fa-chevron-down text-xs ml-2"></i></span>
+                        </button>
+                        <div id="export-dropdown-menu" class="absolute right-0 mt-2 w-56 origin-top-right rounded-md shadow-lg bg-white ring-1 ring-black ring-opacity-5 hidden z-20">
+                            <div class="py-1">
+                                <button id="export-pdf-btn" class="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">
+                                    <i class="fa-solid fa-file-pdf mr-2 text-danger"></i> Export PDF
+                                </button>
+                                <button id="export-csv-btn" class="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">
+                                    <i class="fa-solid fa-file-csv mr-2 text-secondary"></i> Export CSV
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                    <!-- END MODIFIED: Export button changed to a dropdown container -->
                 </div>
             </div>
 
@@ -1003,6 +1017,12 @@
 
             let profitChartInstance = null;
             let expenseChartInstance = null; // NEW: Expense chart instance
+            let filteredSalesData = []; // Store filtered data for export
+            let filteredExpensesData = []; // Store filtered data for export
+
+            const toggleExportDropdown = () => {
+                $('export-dropdown-menu').classList.toggle('hidden');
+            };
 
             const initializeStatsControls = () => {
                 // Set default reference date to today
@@ -1021,7 +1041,17 @@
                     button.onclick = (e) => switchStatsTab(e.target.dataset.tab);
                 });
                 
-                $('export-report-btn').onclick = exportReportToPDF;
+                // Export Dropdown Listeners
+                $('export-dropdown-toggle').onclick = toggleExportDropdown;
+                $('export-pdf-btn').onclick = () => {
+                    toggleExportDropdown();
+                    exportReportToPDF();
+                };
+                $('export-csv-btn').onclick = () => {
+                    toggleExportDropdown();
+                    exportReportToCSV(); // NEW CSV Export Handler
+                };
+
 
                 // Attach sorting listeners only once
                 if (!sortingListenersAttached) {
@@ -1074,21 +1104,32 @@
                 updateStats();
             };
 
-            const updateStats = () => {
+            const getFilteredData = () => {
                 const period = $('stats-period').value;
                 const referenceTimestamp = state.statsRefDate.getTime();
                 
                 const filteredSales = filterByPeriod(sales, period, referenceTimestamp);
                 const filteredExpenses = filterByPeriod(expenses, period, referenceTimestamp);
 
+                return { sales: filteredSales, expenses: filteredExpenses };
+            };
+
+
+            const updateStats = () => {
+                const { sales: currentSales, expenses: currentExpenses } = getFilteredData();
+
+                // Store for export functions
+                filteredSalesData = currentSales;
+                filteredExpensesData = currentExpenses;
+
                 let totalSales = 0;
                 let totalExpenses = 0;
 
-                filteredSales.forEach(sale => {
+                currentSales.forEach(sale => {
                     totalSales += sale.totalAmount;
                 });
                 
-                filteredExpenses.forEach(expense => {
+                currentExpenses.forEach(expense => {
                     totalExpenses += expense.amount;
                 });
 
@@ -1098,10 +1139,10 @@
                 $('stat-expenses').textContent = formatCurrency(totalExpenses);
                 $('stat-profit').textContent = formatCurrency(netProfit);
 
-                renderSalesLog(filteredSales);
-                renderExpensesLog(filteredExpenses); 
-                renderProfitChart(filteredSales, filteredExpenses, period);
-                renderExpensePieChart(filteredExpenses, period); // NEW: Call the new chart renderer
+                renderSalesLog(currentSales);
+                renderExpensesLog(currentExpenses); 
+                renderProfitChart(currentSales, currentExpenses, $('stats-period').value);
+                renderExpensePieChart(currentExpenses, $('stats-period').value);
             };
 
             const filterByPeriod = (data, period, referenceTimestamp) => {
@@ -1509,12 +1550,91 @@
                     }
                 });
             };
+
+            // NEW: Export to CSV Logic
+            const exportReportToCSV = () => {
+                const period = $('stats-period').value;
+                const refDate = new Date(state.statsRefDate).toLocaleDateString();
+                const filename = `Report_${period}_${refDate.replace(/\//g, '-')}.csv`;
+
+                const salesHeader = ['Type', 'Timestamp', 'Date_Time', 'Total_Amount', 'Items_Sold'];
+                const expensesHeader = ['Type', 'Timestamp', 'Date_Time', 'Amount', 'Description', 'Category'];
+
+                let csvContent = "data:text/csv;charset=utf-8,";
+                
+                // --- Sales Data ---
+                csvContent += '*** SALES LOG ***\n';
+                csvContent += salesHeader.join(',') + '\n';
+
+                const inventoryMap = inventory.reduce((map, item) => {
+                    map[item.itemId] = item;
+                    return map;
+                }, {});
+
+                const sortedSales = sortData([...filteredSalesData], 'timestamp', 'desc');
+
+                sortedSales.forEach(sale => {
+                    const dateTime = new Date(sale.timestamp).toLocaleString();
+                    const items = sale.itemsSold.map(item => {
+                        const name = inventoryMap[item.itemId]?.name || 'Unknown';
+                        return `${item.quantity}x ${name} @${item.priceAtSale}`;
+                    }).join(' | ');
+
+                    const row = [
+                        'SALE',
+                        sale.timestamp,
+                        `"${dateTime}"`,
+                        sale.totalAmount.toFixed(2),
+                        `"${items}"`
+                    ];
+                    csvContent += row.join(',') + '\n';
+                });
+                
+                // --- Sales Totals ---
+                const totalSalesAmount = filteredSalesData.reduce((sum, sale) => sum + sale.totalAmount, 0);
+                csvContent += `\nTOTAL SALES AMOUNT,,-,${totalSalesAmount.toFixed(2)},-\n`;
+
+
+                // --- Expenses Data ---
+                csvContent += '\n*** EXPENSES LOG ***\n';
+                csvContent += expensesHeader.join(',') + '\n';
+
+                const sortedExpenses = sortData([...filteredExpensesData], 'timestamp', 'desc');
+
+                sortedExpenses.forEach(expense => {
+                    const dateTime = new Date(expense.timestamp).toLocaleString();
+                    const row = [
+                        'EXPENSE',
+                        expense.timestamp,
+                        `"${dateTime}"`,
+                        expense.amount.toFixed(2),
+                        `"${expense.description}"`,
+                        `"${expense.category}"`
+                    ];
+                    csvContent += row.join(',') + '\n';
+                });
+
+                // --- Expenses Totals ---
+                const totalExpenseAmount = filteredExpensesData.reduce((sum, expense) => sum + expense.amount, 0);
+                csvContent += `\nTOTAL EXPENSES AMOUNT,,-,${totalExpenseAmount.toFixed(2)},-,-\n`;
+
+                // --- Trigger Download ---
+                const encodedUri = encodeURI(csvContent);
+                const link = document.createElement('a');
+                link.setAttribute('href', encodedUri);
+                link.setAttribute('download', filename);
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+
+                showMessage('CSV generated and downloading.', 'secondary');
+            };
             
             // --- PDF Export Logic ---
             const exportReportToPDF = async () => {
-                const btn = $('export-report-btn');
+                const btn = $('export-dropdown-toggle');
                 btn.disabled = true;
-                btn.textContent = 'Generating...';
+                btn.querySelector('span').textContent = 'Generating...';
                 showMessage('Generating PDF report...', 'info');
 
                 try {
@@ -1666,7 +1786,7 @@
                     showMessage('Error generating PDF. See console for details.', 'error');
                 } finally {
                     btn.disabled = false;
-                    btn.textContent = 'Export Report (PDF)';
+                    btn.querySelector('span').innerHTML = 'Export <i class="fa-solid fa-chevron-down text-xs ml-2"></i>';
                 }
             };
             
