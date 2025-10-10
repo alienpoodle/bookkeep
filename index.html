@@ -402,7 +402,7 @@
             <!-- Export Individual Data Section -->
             <div class="bg-card-bg p-6 rounded-xl shadow-lg">
                 <h2 class="text-2xl font-semibold mb-4 text-primary border-b pb-2">Export Individual Data (CSV)</h2>
-                <p class="text-gray-600 mb-6">Download your raw data records for external backup or analysis.</p>
+                <p class="text-gray-600 mb-6">Download your raw data records for external backup or analysis. **Fields are human-readable for easy editing.**</p>
 
                 <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
                     <button class="export-individual-btn p-3 bg-primary text-white font-semibold rounded-lg hover:bg-indigo-600 transition duration-150 flex items-center justify-center space-x-2" data-store="inventory">
@@ -420,7 +420,7 @@
             <!-- Import Data Section -->
             <div class="bg-card-bg p-6 rounded-xl shadow-lg">
                 <h2 class="text-2xl font-semibold mb-4 text-danger border-b pb-2">Import Data (CSV)</h2>
-                <p class="text-gray-600 mb-6">Upload CSV files to restore or update your data records. **Warning: This operation will overwrite existing entries with matching IDs.**</p>
+                <p class="text-gray-600 mb-6">Upload CSV files to restore or update your data records. **CSV headers must match the exported format.**</p>
 
                 <div class="space-y-6">
                     <!-- Inventory Import -->
@@ -1107,7 +1107,8 @@
                 };
                 $('export-csv-btn').onclick = () => {
                     toggleExportDropdown();
-                    exportReportToCSV(); // P&L CSV Export Handler
+                    // Pass a combined key indicating this is the P&L report for both sales and expenses
+                    exportReportToCSV('pnl'); 
                 };
 
 
@@ -1611,31 +1612,75 @@
 
             // --- CSV Export/Import Definitions and Logic ---
 
+            // Defines the mapping between IndexedDB keys (db) and human-readable CSV headers (csv)
             const CSV_MAPS = {
-                // Defines the expected CSV header and the corresponding data property for each store
                 inventory: {
-                    headers: ['itemId', 'name', 'sellingPrice', 'stockQuantity', 'unitOfMeasure'],
-                    key: 'itemId',
-                    dataType: { sellingPrice: 'number', stockQuantity: 'number' }
+                    storeName: STORE_INVENTORY,
+                    dbKey: 'itemId',
+                    map: [
+                        { db: 'itemId', csv: 'SKU_ID', type: 'string' },
+                        { db: 'name', csv: 'Item_Name', type: 'string' },
+                        { db: 'sellingPrice', csv: 'Selling_Price_XCD', type: 'number' },
+                        { db: 'stockQuantity', csv: 'Stock_Quantity', type: 'number' },
+                        { db: 'unitOfMeasure', csv: 'Unit_of_Measure', type: 'string' }
+                    ],
                 },
                 sales: {
-                    headers: ['saleId', 'timestamp', 'totalAmount', 'paymentMethod', 'itemsSold_JSON'],
-                    key: 'saleId',
-                    dataType: { timestamp: 'number', totalAmount: 'number' },
-                    // Sales itemsSold must be stringified/parsed as JSON for a single CSV field
-                    transform: (item) => ({
-                        ...item,
-                        itemsSold_JSON: JSON.stringify(item.itemsSold)
-                    }),
-                    reverseTransform: (item) => ({
-                        ...item,
-                        itemsSold: JSON.parse(item.itemsSold_JSON)
-                    })
+                    storeName: STORE_SALES,
+                    dbKey: 'saleId',
+                    map: [
+                        { db: 'saleId', csv: 'Sale_ID', type: 'number' },
+                        { db: 'timestamp', csv: 'Date_Time', type: 'timestamp' }, 
+                        { db: 'totalAmount', csv: 'Total_Amount_XCD', type: 'number' },
+                        { db: 'paymentMethod', csv: 'Payment_Method', type: 'string' },
+                        // NEW: Split up the complex item list into separate human-readable fields
+                        { db: 'itemNames', csv: 'Item_Names', type: 'list_string' },
+                        { db: 'quantitiesSold', csv: 'Quantities_Sold', type: 'list_number' },
+                        { db: 'pricesAtSale', csv: 'Prices_At_Sale_XCD', type: 'list_number' },
+                        { db: 'itemsSold', csv: 'itemsSold_JSON', type: 'complex' } // Internal JSON for import only
+                    ],
+                    // Custom transform to flatten nested structure for export
+                    transform: (item) => {
+                        const inventoryMap = inventory.reduce((map, i) => { map[i.itemId] = i; return map; }, {});
+                        
+                        const itemNames = [];
+                        const quantitiesSold = [];
+                        const pricesAtSale = [];
+
+                        item.itemsSold.forEach(i => {
+                            itemNames.push(inventoryMap[i.itemId]?.name || 'Unknown Item');
+                            quantitiesSold.push(i.quantity);
+                            pricesAtSale.push(i.priceAtSale);
+                        });
+
+                        return {
+                            ...item,
+                            itemNames: itemNames.join(' | '),
+                            quantitiesSold: quantitiesSold.join(' | '),
+                            pricesAtSale: pricesAtSale.join(' | '),
+                            // Keep original JSON string for round-tripping complex data on import
+                            itemsSold_JSON: JSON.stringify(item.itemsSold) 
+                        };
+                    },
+                    // Reverse transform for import (relies on the hidden JSON field)
+                    reverseTransform: (record) => {
+                        return {
+                            ...record,
+                            itemsSold: JSON.parse(record.itemsSold_JSON || '[]')
+                        };
+                    }
                 },
                 expenses: {
-                    headers: ['expenseId', 'timestamp', 'amount', 'description', 'category'],
-                    key: 'expenseId',
-                    dataType: { expenseId: 'number', timestamp: 'number', amount: 'number' }
+                    storeName: STORE_EXPENSES,
+                    dbKey: 'expenseId',
+                    map: [
+                        { db: 'expenseId', csv: 'Expense_ID', type: 'number' },
+                        { db: 'timestamp', csv: 'Date_Time', type: 'timestamp' },
+                        { db: 'amount', csv: 'Amount_XCD', type: 'number' },
+                        { db: 'description', csv: 'Description', type: 'string' },
+                        { db: 'category', csv: 'Category', type: 'string' }
+                    ],
+                    // No complex transform needed, just relying on general formatting in exportDataToCSV
                 }
             };
             
@@ -1649,22 +1694,54 @@
                 document.body.removeChild(link);
             };
 
-            const exportIndividualCSV = async (storeName) => {
-                const data = await DBManager.getAll(storeName);
-                const map = CSV_MAPS[storeName];
-
+            const exportDataToCSV = (data, map) => {
                 let csvContent = "data:text/csv;charset=utf-8,";
                 
-                // Add header row
-                csvContent += map.headers.join(',') + '\n';
+                // Filter the map to include only fields that should be in the CSV header
+                const csvHeaderFields = map.map.filter(m => m.csv !== 'itemsSold_JSON');
 
+                // Get CSV Headers
+                const csvHeaders = csvHeaderFields.map(m => m.csv);
+
+                // For sales export, we need the hidden JSON field for round-tripping, added at the end of the list of DB keys
+                const internalKeys = map.map.map(m => m.db);
+                const exportHeaders = (map.storeName === STORE_SALES) 
+                    ? [...csvHeaders, 'itemsSold_JSON'] // Human readable headers + internal JSON field
+                    : csvHeaders;
+
+                csvContent += exportHeaders.join(',') + '\n';
+                
                 data.forEach(item => {
-                    let rowData = {};
-                    // Apply special transforms if needed (e.g., stringifying nested arrays)
-                    const itemToExport = map.transform ? map.transform(item) : item;
+                    // Apply complex transforms for sales to get human-readable values and the hidden JSON string
+                    const itemToExport = map.transform ? map.transform(item, inventory) : item;
 
-                    const row = map.headers.map(header => {
-                        let value = itemToExport[header];
+                    const row = exportHeaders.map(header => {
+                        let value;
+                        let fieldMap = map.map.find(m => m.csv === header);
+
+                        // 1. Determine the raw value to export based on the header
+                        if (header === 'itemsSold_JSON') {
+                            value = itemToExport.itemsSold_JSON; // Internal JSON string
+                        } else if (fieldMap) {
+                            // If it's a mapped field, get the raw DB value
+                            const dbKey = fieldMap.db;
+                            value = itemToExport[dbKey]; 
+                        } else if (itemToExport[header]) {
+                            // Catch new human-readable fields created in the transform (e.g., Item_Names)
+                            value = itemToExport[header];
+                        } else {
+                            value = null; // Default to null
+                        }
+                        
+                        // 2. Apply human-readable formatting to the raw value
+                        if (header.includes('_XCD')) {
+                            // Apply currency formatting for readability
+                            value = formatCurrency(value);
+                        } else if (header === 'Date_Time' && typeof itemToExport.timestamp === 'number') {
+                            // Apply date formatting for readability
+                            value = new Date(itemToExport.timestamp).toLocaleString();
+                        }
+
                         // Handle null/undefined values and quotes for CSV safety
                         if (value === null || value === undefined) return '';
                         // Enclose strings that might contain commas
@@ -1676,9 +1753,53 @@
                     csvContent += row.join(',') + '\n';
                 });
 
+                return csvContent;
+            };
+
+
+            const exportIndividualCSV = async (storeName) => {
+                const map = CSV_MAPS[storeName];
+                const data = await DBManager.getAll(storeName);
+                
+                const csvContent = exportDataToCSV(data, map);
+
                 const filename = `${storeName}_export_${new Date().toISOString().slice(0, 10)}.csv`;
                 downloadCSV(csvContent, filename);
                 showMessage(`${storeName.toUpperCase()} exported successfully!`, 'success');
+            };
+
+            const exportReportToCSV = (type) => {
+                if (type !== 'pnl') return;
+                
+                const period = $('stats-period').value;
+                const refDate = new Date(state.statsRefDate).toLocaleDateString();
+                const filename = `PnL_Report_${period}_${refDate.replace(/\//g, '-')}.csv`;
+
+                let csvContent = "data:text/csv;charset=utf-8,";
+                
+                // --- Sales Data ---
+                csvContent += '*** SALES LOG ***\n';
+                const salesContent = exportDataToCSV(filteredSalesData, CSV_MAPS.sales);
+                csvContent += salesContent.split('\n').slice(0).join('\n'); // Add header and content (excluding the data type line if present)
+                
+                // --- Sales Totals ---
+                const totalSalesAmount = filteredSalesData.reduce((sum, sale) => sum + sale.totalAmount, 0);
+                // Adjusted TOTAL SALES row to match the new 7-column header structure of Sales_CSV
+                csvContent += `TOTAL SALES AMOUNT,,,${formatCurrency(totalSalesAmount)},,,,,-\n`;
+
+
+                // --- Expenses Data ---
+                csvContent += '\n*** EXPENSES LOG ***\n';
+                const expensesContent = exportDataToCSV(filteredExpensesData, CSV_MAPS.expenses);
+                csvContent += expensesContent.split('\n').slice(0).join('\n'); // Add header and content
+                
+                // --- Expenses Totals ---
+                const totalExpenseAmount = filteredExpensesData.reduce((sum, expense) => sum + expense.amount, 0);
+                csvContent += `TOTAL EXPENSES AMOUNT,,${formatCurrency(totalExpenseAmount)},,,-\n`;
+
+                // --- Trigger Download ---
+                downloadCSV(csvContent, filename);
+                showMessage('P&L CSV generated and downloading.', 'secondary');
             };
 
             const handleImport = (storeName) => {
@@ -1704,6 +1825,7 @@
                         console.error(`Import Error for ${storeName}:`, error);
                         showMessage(`Import failed for ${storeName}: ${error.message}`, 'error');
                     }
+                    fileInput.value = ''; // Clear file input
                     importBtn.disabled = false;
                 };
                 reader.readAsText(file);
@@ -1716,52 +1838,86 @@
                     throw new Error('CSV file contains no data.');
                 }
 
-                // Simple header check
-                const headers = lines[0].split(',').map(h => h.trim().replace(/"/g, ''));
-                if (headers.join(',') !== map.headers.join(',')) {
-                    throw new Error(`Invalid headers. Expected: ${map.headers.join(', ')}`);
-                }
-
+                const csvHeaders = lines[0].split(',').map(h => h.trim().replace(/"/g, ''));
+                
+                // Determine which headers to process for database storage
+                const processingDbKeys = map.map.map(m => m.db);
+                
                 let importedCount = 0;
                 let errorCount = 0;
 
                 for (let i = 1; i < lines.length; i++) {
                     const values = lines[i].split(',');
-                    if (values.length !== map.headers.length) {
-                        console.warn(`Skipping row ${i+1}: Column count mismatch.`);
-                        errorCount++;
+                    
+                    if (values.length < csvHeaders.length || lines[i].trim().startsWith('TOTAL') || lines[i].trim().startsWith('***')) {
+                        // Skip incomplete, footer, or header rows
                         continue;
                     }
 
                     let record = {};
                     let isValid = true;
 
-                    // Map values to headers and apply type conversion
-                    map.headers.forEach((header, index) => {
+                    // Map CSV values to IndexedDB keys and apply type conversion
+                    csvHeaders.forEach((csvHeader, index) => {
                         let value = values[index].trim().replace(/"/g, ''); // Basic de-quote
-                        const type = map.dataType[header];
+                        
+                        // 1. Find the mapping based on the human-readable header
+                        const fieldMap = map.map.find(m => m.csv === csvHeader);
+                        
+                        let dbKey = null;
+                        let type = 'string';
+                        
+                        if (fieldMap) {
+                            dbKey = fieldMap.db;
+                            type = fieldMap.type;
+                        } else if (csvHeader === 'itemsSold_JSON' && storeName === STORE_SALES) {
+                            // Handle the hidden JSON field for sales import
+                            dbKey = 'itemsSold_JSON';
+                            type = 'string';
+                        } else {
+                            // Ignore columns we don't recognize or fields that are not intended for DB storage (like Item_Names)
+                            return; 
+                        }
+                        
+                        // We only want to process fields that map directly to DB keys (excluding the complex list fields created for readability)
+                        if (!processingDbKeys.includes(dbKey) && dbKey !== 'itemsSold_JSON') {
+                            return;
+                        }
+
 
                         if (type === 'number') {
-                            value = parseFloat(value);
+                            // Clean currency symbols for safe parsing (removes letters, symbols, spaces, except number, minus sign, and dot)
+                            value = parseFloat(value.replace(/[^0-9.-]/g, ''));
                             if (isNaN(value)) {
-                                console.warn(`Skipping row ${i+1}: Invalid number for ${header}`);
+                                console.warn(`Skipping row ${i+1}: Invalid number for ${dbKey} (CSV column: ${csvHeader})`);
+                                isValid = false;
+                            }
+                        } else if (type === 'timestamp') {
+                            // Attempt to parse human date/time back to timestamp
+                            const date = new Date(value);
+                            value = date.getTime();
+                            if (isNaN(value)) {
+                                console.warn(`Skipping row ${i+1}: Invalid date format for ${dbKey}`);
                                 isValid = false;
                             }
                         }
-                        record[header] = value;
+                        record[dbKey] = value;
                     });
                     
-                    if (!isValid) continue;
-
-                    // Apply reverse transform if needed (e.g., parsing JSON strings back to objects)
+                    if (!isValid) {
+                        errorCount++;
+                        continue;
+                    }
+                    
+                    // Apply reverse transform for sales (to parse itemsSold_JSON into itemsSold array)
                     const itemToSave = map.reverseTransform ? map.reverseTransform(record) : record;
 
-                    if (itemToSave[map.key]) {
+                    if (itemToSave[map.dbKey]) {
                         // Use put for update/insert based on key
                         await DBManager.updateItem(storeName, itemToSave);
                         importedCount++;
                     } else {
-                        console.warn(`Skipping row ${i+1}: Missing required key ${map.key}`);
+                        console.warn(`Skipping row ${i+1}: Missing required key ${map.dbKey}`);
                         errorCount++;
                     }
                 }
